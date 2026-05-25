@@ -16,7 +16,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -65,7 +66,7 @@ button.danger {
 }
 
 .icon-btn {
-  width: 48px;
+  min-width: 84px;
   padding: 0;
 }
 
@@ -148,13 +149,18 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   min-height: 46px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   padding: 0 12px;
   background: #f8fafc;
+}
+
+select {
+  appearance: none;
 }
 
 .summary {
@@ -226,10 +232,35 @@ input {
   margin-top: 10px;
 }
 
+.edit-summary {
+  margin: 8px 0 0;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.edit-time-grid,
+.edit-count-grid,
+.event-grid {
+  align-items: end;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
 .zone-edit button {
   width: 100%;
   margin-top: 10px;
   background: #1d4ed8;
+}
+
+.event-panel {
+  border-color: #bfdbfe;
+  background: #f8fbff;
 }
 
 .ratio-card {
