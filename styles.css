@@ -263,6 +263,44 @@ select {
   background: #f8fbff;
 }
 
+.miju-detail {
+  margin-top: 12px;
+  border-top: 1px solid #dbe3ef;
+  padding-top: 10px;
+}
+
+.miju-detail summary {
+  cursor: pointer;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.miju-detail button {
+  width: 100%;
+  margin: 10px 0;
+  background: #1d4ed8;
+}
+
+.compact-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.miju-preview {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 13px;
+  padding: 10px;
+}
+
+.miju-preview span {
+  color: #475569;
+}
+
 .ratio-card {
   display: grid;
   gap: 10px;
@@ -410,6 +448,10 @@ select {
   .segmented,
   .segmented.triple {
     grid-template-columns: 1fr;
+  }
+
+  .form-grid.compact-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .row-actions button {
