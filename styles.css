@@ -244,8 +244,13 @@ select {
 
 .edit-time-grid,
 .edit-count-grid,
+.edit-extra-grid,
 .event-grid {
   align-items: end;
+}
+
+.edit-extra-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .wide {
@@ -299,6 +304,43 @@ select {
 
 .miju-preview span {
   color: #475569;
+}
+
+.order-editor {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.order-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  padding: 8px;
+  background: white;
+}
+
+.order-row span {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.order-row div {
+  display: flex;
+  gap: 6px;
+}
+
+.order-row button {
+  min-width: 44px;
+  min-height: 40px;
+  padding: 0;
 }
 
 .ratio-card {

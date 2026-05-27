@@ -663,6 +663,123 @@ function roundTo(value, digits) {
   return Math.round(value * factor) / factor;
 }
 
+// src/domain/zoneValidation.ts
+function validateZoneQuantity(input) {
+  const expectedTotal = normalizePositive(input.expectedTotal);
+  const completedOther = Math.max(0, input.completedOther);
+  if (!input.hasValue) {
+    return {
+      ok: false,
+      value: 0,
+      message: `${input.zoneName} \uC218\uB7C9\uC774 \uBE44\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.`
+    };
+  }
+  if (!Number.isFinite(input.entered) || input.entered <= 0) {
+    return {
+      ok: false,
+      value: input.entered,
+      message: `${input.zoneName} \uC218\uB7C9\uC740 1\uAC1C \uC774\uC0C1\uC774\uC5B4\uC57C \uD569\uB2C8\uB2E4.`
+    };
+  }
+  const looksLikeDayTotal = expectedTotal !== void 0 && completedOther > 0 && input.entered > Math.max(0, expectedTotal - completedOther) && input.entered - completedOther > 0 && input.entered - completedOther <= input.maxReasonable;
+  if (looksLikeDayTotal) {
+    return {
+      ok: true,
+      value: input.entered,
+      suggestedValue: input.entered - completedOther,
+      suggestionReason: "looks_like_day_total",
+      message: `${input.entered}\uAC1C\uB294 \uB2F9\uC77C \uC804\uCCB4 \uC218\uB7C9\uCC98\uB7FC \uBCF4\uC785\uB2C8\uB2E4. \uC774\uBBF8 \uC644\uB8CC\uD55C ${completedOther}\uAC1C\uB97C \uBE7C\uBA74 ${input.entered - completedOther}\uAC1C\uC785\uB2C8\uB2E4.`
+    };
+  }
+  if (expectedTotal !== void 0) {
+    const tolerance = Math.max(10, Math.ceil(expectedTotal * 0.1));
+    if (input.entered + completedOther > expectedTotal + tolerance) {
+      return {
+        ok: true,
+        value: input.entered,
+        warning: `${input.zoneName}\uAE4C\uC9C0 \uD569\uACC4 ${input.entered + completedOther}\uAC1C\uC785\uB2C8\uB2E4. \uC608\uC0C1 \uC218\uB7C9 ${expectedTotal}\uAC1C\uBCF4\uB2E4 \uB9CE\uC774 \uD07D\uB2C8\uB2E4.`
+      };
+    }
+  }
+  if (input.entered > input.maxReasonable) {
+    return {
+      ok: true,
+      value: input.entered,
+      warning: `${input.zoneName} ${input.entered}\uAC1C\uAC00 \uC785\uB825\uB410\uC2B5\uB2C8\uB2E4. \uB108\uBB34 \uD070 \uAC12\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.`
+    };
+  }
+  return {
+    ok: true,
+    value: input.entered
+  };
+}
+function resolveMijuDetailQuantity(input) {
+  const aTotal = input.one + input.two + input.three;
+  const hasDetail = aTotal > 0 || input.restHasValue;
+  if (!hasDetail) {
+    return {
+      ok: true,
+      one: 0,
+      two: 0,
+      three: 0,
+      rest: 0,
+      aTotal: 0,
+      detailTotal: 0,
+      delivered: input.total,
+      hasDetail: false,
+      autoCalculatedRest: false
+    };
+  }
+  if (input.totalHasValue) {
+    if (input.total < aTotal) {
+      return {
+        ok: false,
+        message: `\uCD1D\uD569 ${input.total}\uAC1C\uAC00 1/2/3\uB3D9 \uD569\uACC4 ${aTotal}\uAC1C\uBCF4\uB2E4 \uC791\uC2B5\uB2C8\uB2E4.`,
+        one: input.one,
+        two: input.two,
+        three: input.three,
+        rest: input.rest,
+        aTotal,
+        detailTotal: aTotal + input.rest,
+        delivered: input.total,
+        hasDetail,
+        autoCalculatedRest: false
+      };
+    }
+    if (!input.restHasValue || input.rest === 0) {
+      const rest = input.total - aTotal;
+      return {
+        ok: true,
+        one: input.one,
+        two: input.two,
+        three: input.three,
+        rest,
+        aTotal,
+        detailTotal: input.total,
+        delivered: input.total,
+        hasDetail: true,
+        autoCalculatedRest: rest !== input.rest
+      };
+    }
+  }
+  const detailTotal = aTotal + input.rest;
+  return {
+    ok: true,
+    one: input.one,
+    two: input.two,
+    three: input.three,
+    rest: input.rest,
+    aTotal,
+    detailTotal,
+    delivered: detailTotal,
+    hasDetail: true,
+    autoCalculatedRest: false
+  };
+}
+function normalizePositive(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : void 0;
+}
+
 // src/storage/dayStore.ts
 function createDateSummary(dayRecord) {
   return {
@@ -1819,7 +1936,7 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/main.ts
-var APP_VERSION2 = "0.2.6-miju-detail-input";
+var APP_VERSION2 = "0.2.7-field-guardrails";
 var BASE_ZONE_IDS = ["miju", "hils"];
 var MAX_REASONABLE_EXPECTED = 1200;
 var MAX_REASONABLE_ZONE = 800;
@@ -1976,28 +2093,53 @@ function renderWorkOrderStep() {
   return `
     <section class="panel focus">
       <p class="step">3 / \uC624\uB298 \uC21C\uC11C</p>
-      <h2>\uC791\uC5C5 \uC21C\uC11C \uC120\uD0DD</h2>
-      <p class="hint">\uC9D0 \uC801\uC7AC\uC640 \uD604\uC7A5 \uC0C1\uD669\uC5D0 \uB9DE\uCDB0 \uC624\uB298 \uC2E4\uC81C \uCC98\uB9AC \uC21C\uC11C\uB97C \uBA3C\uC800 \uACE0\uB985\uB2C8\uB2E4.</p>
+      <h2>\uC791\uC5C5 \uC21C\uC11C \uC900\uBE44</h2>
+      <p class="hint">\uAE30\uBCF8 \uC21C\uC11C\uB97C \uB9CC\uB4E0 \uB4A4 \uD654\uC0B4\uD45C\uB85C \uC2E4\uC81C \uC9D0 \uC21C\uC11C\uC5D0 \uB9DE\uCDB0 \uC870\uC815\uD569\uB2C8\uB2E4.</p>
       <div class="segmented">
-        <button data-action="set-work-order" data-order="miju,hils">\uBBF8\uC8FC \u2192 \uD790\uC2A4</button>
-        <button data-action="set-work-order" data-order="hils,miju">\uD790\uC2A4 \u2192 \uBBF8\uC8FC</button>
+        <button data-action="set-work-order" data-order="miju,hils">\uBBF8\uC8FC \u2192 \uD790\uC2A4 \uD3B8\uC9D1</button>
+        <button data-action="set-work-order" data-order="hils,miju">\uD790\uC2A4 \u2192 \uBBF8\uC8FC \uD3B8\uC9D1</button>
       </div>
       <div class="segmented">
-        <button data-action="set-work-order" data-order="alt,hils,miju">\uB300\uCCB4 \u2192 \uD790\uC2A4 \u2192 \uBBF8\uC8FC</button>
-        <button data-action="set-work-order" data-order="hils,alt,miju">\uD790\uC2A4 \u2192 \uB300\uCCB4 \u2192 \uBBF8\uC8FC</button>
+        <button data-action="set-work-order" data-order="alt,hils,miju">\uB300\uCCB4 \u2192 \uD790\uC2A4 \u2192 \uBBF8\uC8FC \uD3B8\uC9D1</button>
+        <button data-action="set-work-order" data-order="hils,alt,miju">\uD790\uC2A4 \u2192 \uB300\uCCB4 \u2192 \uBBF8\uC8FC \uD3B8\uC9D1</button>
       </div>
-      <p class="hint">\uCD94\uAC00 \uB300\uCCB4\uBC30\uC1A1\uC740 \uC774\uD6C4\uC5D0\uB3C4 \uB354 \uBD99\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.</p>
+      <p class="hint">\uCD94\uAC00 \uAD6C\uC5ED\uC740 \uC21C\uC11C \uD3B8\uC9D1 \uD654\uBA74\uC5D0\uC11C \uB354 \uBD99\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.</p>
     </section>
   `;
 }
 function renderZoneStartStep(zone) {
+  const orderEditor = hasAnyZoneStarted() ? "" : renderZoneOrderEditor();
   return `
     <section class="panel focus">
       <p class="step">${zone.order} / ${escapeHtml(zone.name)}</p>
       <h2>${escapeHtml(zone.name)} \uC2DC\uC791</h2>
       <p class="hint">${zone.id === "miju" ? "\uBBF8\uC8FC\uB294 1,2,3\uB3D9\uACFC \uB098\uBA38\uC9C0 \uC218\uB7C9\uC744 \uB098\uB220 \uC785\uB825\uD569\uB2C8\uB2E4." : "\uBC30\uC1A1 \uC218\uB7C9\uACFC \uC815\uB9AC \uC2DC\uC791/\uC644\uB8CC\uB97C \uBD84\uB9AC\uD574\uC11C \uAE30\uB85D\uD569\uB2C8\uB2E4."}</p>
+      ${orderEditor}
       <button data-action="zone-start" data-zone="${zone.id}">${escapeHtml(zone.name)} \uC2DC\uC791</button>
     </section>
+  `;
+}
+function renderZoneOrderEditor() {
+  const zones = getOrderedZones();
+  return `
+    <div class="order-editor">
+      <strong>\uC624\uB298 \uC791\uC5C5 \uC21C\uC11C</strong>
+      <p class="hint">\uC791\uC5C5 \uC2DC\uC791 \uC804\uC5D0\uB294 \uD654\uC0B4\uD45C\uB85C \uC21C\uC11C\uB97C \uBC14\uAFC0 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</p>
+      ${zones.map((zone, index) => `
+        <div class="order-row">
+          <span>${index + 1}. ${escapeHtml(zone.name)}</span>
+          <div>
+            <button data-action="move-zone-up" data-zone="${zone.id}" ${index === 0 ? "disabled" : ""} title="\uC704\uB85C">\u25B2</button>
+            <button data-action="move-zone-down" data-zone="${zone.id}" ${index === zones.length - 1 ? "disabled" : ""} title="\uC544\uB798\uB85C">\u25BC</button>
+          </div>
+        </div>
+      `).join("")}
+      <div class="segmented">
+        <button data-action="add-alt-zone-to-order">\uB300\uCCB4\uBC30\uC1A1 \uCD94\uAC00</button>
+        <button data-action="add-custom-zone-to-order">\uCD94\uAC00\uAD6C\uC5ED \uCD94\uAC00</button>
+      </div>
+      <label>\uCD94\uAC00\uAD6C\uC5ED \uC774\uB984<input id="custom-zone-name" type="text" maxlength="24" placeholder="\uC608: \uC0C1\uAC00 \uCD94\uAC00"></label>
+    </div>
   `;
 }
 function renderZoneWorkStep(zone) {
@@ -2197,12 +2339,14 @@ function renderCompletedZoneEditForm(zoneId) {
             <label>3\uB3D9<input id="edit-${zoneId}-3" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${three || ""}"></label>
             <label>\uB098\uBA38\uC9C0<input id="edit-${zoneId}-rest" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${bTotal || ""}"></label>
           ` : `
-            <label>\uBC30\uC1A1 \uC218\uB7C9<input id="edit-${zoneId}-delivered" type="number" inputmode="numeric" min="0" max="${MAX_REASONABLE_ZONE}" value="${delivered}"></label>
+            <label>\uBC30\uC1A1 \uC218\uB7C9<input id="edit-${zoneId}-delivered" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}"></label>
             <label>\uC815\uB9AC \uC2DC\uC791<input id="edit-${zoneId}-sorting-start" type="datetime-local" value="${formatIsoForInput(sortingStart?.at)}"></label>
             <label>\uC815\uB9AC \uC644\uB8CC<input id="edit-${zoneId}-sorting-end" type="datetime-local" value="${formatIsoForInput(sortingEnd?.at)}"></label>
           `}
-        <label>\uC2E4\uD328<input id="edit-${zoneId}-failed" type="number" inputmode="numeric" min="0" max="${MAX_REASONABLE_ZONE}" value="${failed}"></label>
-        <label>\uCD94\uAC00<input id="edit-${zoneId}-extra" type="number" inputmode="numeric" min="0" max="${MAX_REASONABLE_ZONE}" value="${extra}"></label>
+      </div>
+      <div class="form-grid edit-extra-grid">
+        <label>\uC2E4\uD328<input id="edit-${zoneId}-failed" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${failed}"></label>
+        <label>\uCD94\uAC00<input id="edit-${zoneId}-extra" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${extra}"></label>
       </div>
       <button data-action="save-zone-edit" data-zone="${zoneId}">\uC218\uC815 \uC800\uC7A5</button>
     </details>
@@ -2306,6 +2450,26 @@ async function handleAction(button) {
   }
   if (action === "set-work-order") {
     setWorkOrder(button.dataset.order ?? "");
+    await saveAndRender();
+    return;
+  }
+  if (action === "move-zone-up" && zoneId) {
+    moveZone(zoneId, -1);
+    await saveAndRender();
+    return;
+  }
+  if (action === "move-zone-down" && zoneId) {
+    moveZone(zoneId, 1);
+    await saveAndRender();
+    return;
+  }
+  if (action === "add-alt-zone-to-order") {
+    addZoneToOrder("alt");
+    await saveAndRender();
+    return;
+  }
+  if (action === "add-custom-zone-to-order") {
+    addZoneToOrder("custom", readText("#custom-zone-name", "\uCD94\uAC00 \uAD6C\uC5ED"));
     await saveAndRender();
     return;
   }
@@ -2417,6 +2581,29 @@ function setWorkOrder(orderValue) {
     ensureZone(id, getZoneName2(id), index + 1);
   });
 }
+function addZoneToOrder(kind, requestedName) {
+  if (!currentDay || hasAnyZoneStarted()) return;
+  const id = createExtraZoneId(kind);
+  const name = kind === "alt" ? getNextAltZoneName() : requestedName?.trim() || "\uCD94\uAC00 \uAD6C\uC5ED";
+  ensureZone(id, name, getNextZoneOrder());
+  normalizeZoneOrders();
+}
+function moveZone(zoneId, direction) {
+  if (!currentDay || hasAnyZoneStarted()) return;
+  const ordered = getOrderedZones();
+  const index = ordered.findIndex((zone) => zone.id === zoneId);
+  const targetIndex = index + direction;
+  if (index < 0 || targetIndex < 0 || targetIndex >= ordered.length) return;
+  const next = [...ordered];
+  const [item] = next.splice(index, 1);
+  if (!item) return;
+  next.splice(targetIndex, 0, item);
+  currentDay.zones = next.map((zone, orderIndex) => ({ ...zone, order: orderIndex + 1 }));
+}
+function normalizeZoneOrders() {
+  if (!currentDay) return;
+  currentDay.zones = getOrderedZones().map((zone, index) => ({ ...zone, order: index + 1 }));
+}
 function addIncidentEvent() {
   if (!currentDay) return;
   const title = readText("#event-title", "\uAE30\uD0C0");
@@ -2441,6 +2628,10 @@ function addIncidentEvent() {
 function saveMijuCheckpoint() {
   if (!currentDay) return;
   const parts = readMijuDetailParts();
+  if (!parts.ok) {
+    toast(parts.message ?? "A\uAD6C\uAC04 \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.");
+    return;
+  }
   currentDay = createEvent(currentDay, {
     type: "manual_adjust",
     at: nowIso(),
@@ -2487,8 +2678,15 @@ async function addZoneEnd(zoneId) {
     return;
   }
   const mijuParts = zoneId === "miju" ? readMijuPayloadParts() : void 0;
-  const delivered = mijuParts?.delivered ?? readZoneDelivered(zoneId);
-  if (!confirmLargeNumber(delivered, MAX_REASONABLE_ZONE, getZoneName2(zoneId))) return;
+  const deliveredInput = zoneId === "miju" ? void 0 : readZoneDelivered(zoneId);
+  if (mijuParts?.ok === false) {
+    toast(mijuParts.message ?? "\uBBF8\uC8FC \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.");
+    return;
+  }
+  const rawDelivered = mijuParts?.delivered ?? deliveredInput?.value ?? 0;
+  const hasValue = mijuParts ? mijuParts.totalHasValue || mijuParts.hasDetail : Boolean(deliveredInput?.hasValue);
+  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
+  if (delivered === void 0) return;
   currentDay = createEvent(currentDay, {
     type: "zone_end",
     at: nowIso(),
@@ -2526,8 +2724,15 @@ async function correctCleanup(zoneId) {
 async function saveCompletedZoneEdit(zoneId) {
   if (!currentDay) return;
   const editParts = zoneId === "miju" ? readMijuEditParts(zoneId) : void 0;
-  const delivered = editParts?.delivered ?? readNumber(`#edit-${zoneId}-delivered`);
-  if (!confirmLargeNumber(delivered, MAX_REASONABLE_ZONE, `${getZoneName2(zoneId)} \uC218\uC815 \uC218\uB7C9`)) return;
+  if (editParts?.ok === false) {
+    toast(editParts.message ?? "\uC218\uC815 \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.");
+    return;
+  }
+  const deliveredInput = zoneId === "miju" ? void 0 : readLimitedNumberField(`#edit-${zoneId}-delivered`, 3);
+  const rawDelivered = editParts?.delivered ?? deliveredInput?.value ?? 0;
+  const hasValue = editParts ? editParts.totalHasValue || editParts.hasDetail : Boolean(deliveredInput?.hasValue);
+  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
+  if (delivered === void 0) return;
   await preparePhoneInstallUpdate(store, { kind: "date", date: currentDay.date });
   currentDay = applyCompletedZoneEdit(currentDay, {
     zoneId,
@@ -2535,9 +2740,9 @@ async function saveCompletedZoneEdit(zoneId) {
     endAt: readOptionalTimeInput(`#edit-${zoneId}-end`),
     sortingStartAt: readOptionalTimeInput(`#edit-${zoneId}-sorting-start`),
     sortingEndAt: readOptionalTimeInput(`#edit-${zoneId}-sorting-end`),
-    delivered: zoneId === "miju" ? editParts?.delivered : readNumber(`#edit-${zoneId}-delivered`),
-    failed: readNumber(`#edit-${zoneId}-failed`),
-    extra: readNumber(`#edit-${zoneId}-extra`),
+    delivered,
+    failed: readLimitedNumber(`#edit-${zoneId}-failed`, 3),
+    extra: readLimitedNumber(`#edit-${zoneId}-extra`, 3),
     miju1: editParts?.hasDetail ? editParts.one : void 0,
     miju2: editParts?.hasDetail ? editParts.two : void 0,
     miju3: editParts?.hasDetail ? editParts.three : void 0,
@@ -2588,6 +2793,9 @@ function hasZoneEvent(zoneId, type) {
 }
 function hasZoneStarted(zoneId) {
   return hasZoneEvent(zoneId, "zone_start");
+}
+function hasAnyZoneStarted() {
+  return currentDay?.zones.some((zone) => hasZoneStarted(zone.id)) ?? false;
 }
 function hasZoneEnded(zoneId) {
   return hasZoneEvent(zoneId, "zone_end");
@@ -2958,29 +3166,18 @@ function formatTimeInputValue(date) {
   return `${y}-${m}-${d}T${hh}:${mm}`;
 }
 function readZoneDelivered(zoneId) {
-  if (zoneId === "miju") return readMijuPayloadParts().delivered;
-  if (zoneId === "hils") return readNumber("#hils-count");
-  return readNumber("#extra-count");
+  if (zoneId === "miju") {
+    const parts = readMijuPayloadParts();
+    return { value: parts.delivered, hasValue: parts.totalHasValue || parts.hasDetail };
+  }
+  if (zoneId === "hils") return readLimitedNumberField("#hils-count", 3);
+  return readLimitedNumberField("#extra-count", 3);
 }
 function readMijuPayloadParts() {
   const parts = readMijuDetailParts();
-  const total = readLimitedNumber("#miju-total-count", 3);
-  if (parts.hasDetail) {
-    if (total > 0 && total !== parts.detailTotal) {
-      const ok = confirm(`\uBBF8\uC8FC \uCD1D\uD569 ${total}\uAC1C\uC640 \uC0C1\uC138 \uD569\uACC4 ${parts.detailTotal}\uAC1C\uAC00 \uB2E4\uB985\uB2C8\uB2E4. \uC0C1\uC138 \uD569\uACC4\uB85C \uC800\uC7A5\uD560\uAE4C\uC694?`);
-      if (!ok) return { ...parts, delivered: total, hasDetail: false };
-    }
-    return { ...parts, delivered: parts.detailTotal, hasDetail: true };
-  }
   return {
-    one: 0,
-    two: 0,
-    three: 0,
-    rest: 0,
-    aTotal: 0,
-    detailTotal: 0,
-    delivered: total,
-    hasDetail: false
+    ...parts,
+    totalHasValue: readLimitedNumberField("#miju-total-count", 3).hasValue
   };
 }
 function readMijuDetailParts() {
@@ -2995,27 +3192,91 @@ function readMijuDetailParts() {
     three: three.hasValue ? three.value : checkpoint?.three || 0,
     rest: rest.hasValue ? rest.value : checkpoint?.rest || 0
   };
-  const aTotal = resolved.one + resolved.two + resolved.three;
-  return {
-    ...resolved,
-    aTotal,
-    detailTotal: aTotal + resolved.rest,
-    delivered: aTotal + resolved.rest,
-    hasDetail: aTotal > 0 || resolved.rest > 0
-  };
+  const total = readLimitedNumberField("#miju-total-count", 3);
+  return toMijuParts(resolveMijuDetailQuantity({
+    total: total.value,
+    totalHasValue: total.hasValue,
+    one: resolved.one,
+    two: resolved.two,
+    three: resolved.three,
+    rest: resolved.rest,
+    restHasValue: rest.hasValue || Boolean(checkpoint?.rest)
+  }), total.hasValue);
 }
 function readMijuEditParts(zoneId) {
-  const one = readLimitedNumber(`#edit-${zoneId}-1`, 3);
-  const two = readLimitedNumber(`#edit-${zoneId}-2`, 3);
-  const three = readLimitedNumber(`#edit-${zoneId}-3`, 3);
-  const rest = readLimitedNumber(`#edit-${zoneId}-rest`, 3);
-  const total = readLimitedNumber(`#edit-${zoneId}-total`, 3);
-  const aTotal = one + two + three;
-  const detailTotal = aTotal + rest;
-  if (detailTotal > 0) {
-    return { one, two, three, rest, aTotal, detailTotal, delivered: detailTotal, hasDetail: true };
+  const one = readLimitedNumberField(`#edit-${zoneId}-1`, 3);
+  const two = readLimitedNumberField(`#edit-${zoneId}-2`, 3);
+  const three = readLimitedNumberField(`#edit-${zoneId}-3`, 3);
+  const rest = readLimitedNumberField(`#edit-${zoneId}-rest`, 3);
+  const total = readLimitedNumberField(`#edit-${zoneId}-total`, 3);
+  return toMijuParts(resolveMijuDetailQuantity({
+    total: total.value,
+    totalHasValue: total.hasValue,
+    one: one.value,
+    two: two.value,
+    three: three.value,
+    rest: rest.value,
+    restHasValue: rest.hasValue
+  }), total.hasValue);
+}
+function resolveValidatedDelivered(zoneId, entered, hasValue) {
+  if (!currentDay) return void 0;
+  const zoneName = getZoneName2(zoneId);
+  const result = validateZoneQuantity({
+    zoneName,
+    entered,
+    hasValue,
+    expectedTotal: getExpectedTotal(),
+    completedOther: getCompletedDeliveredTotal(zoneId),
+    maxReasonable: MAX_REASONABLE_ZONE
+  });
+  if (!result.ok) {
+    toast(result.message ?? `${zoneName} \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.`);
+    return void 0;
   }
-  return { one: 0, two: 0, three: 0, rest: 0, aTotal: 0, detailTotal: 0, delivered: total, hasDetail: false };
+  if (result.suggestedValue !== void 0) {
+    const ok = confirm(`${result.message}
+
+${zoneName} \uC218\uB7C9\uC744 ${result.suggestedValue}\uAC1C\uB85C \uC800\uC7A5\uD560\uAE4C\uC694?`);
+    if (ok) return result.suggestedValue;
+    const keep = confirm(`${entered}\uAC1C\uB97C ${zoneName} \uC218\uB7C9\uC73C\uB85C \uADF8\uB300\uB85C \uC800\uC7A5\uD560\uAE4C\uC694?`);
+    return keep ? entered : void 0;
+  }
+  if (result.warning) {
+    const ok = confirm(`${result.warning}
+
+\uADF8\uB300\uB85C \uC800\uC7A5\uD560\uAE4C\uC694?`);
+    return ok ? entered : void 0;
+  }
+  return result.value;
+}
+function getExpectedTotal() {
+  const depart = currentDay?.timeline.find((event) => event.type === "depart_jinjeop");
+  const payload = depart?.payload;
+  return typeof payload?.total === "number" && payload.total > 0 ? payload.total : void 0;
+}
+function getCompletedDeliveredTotal(excludingZoneId) {
+  if (!currentDay) return 0;
+  return currentDay.timeline.reduce((sum, event) => {
+    if (event.type !== "zone_end" || event.zoneId === excludingZoneId) return sum;
+    const payload = event.payload;
+    return sum + (typeof payload?.delivered === "number" ? payload.delivered : 0);
+  }, 0);
+}
+function toMijuParts(result, totalHasValue) {
+  return {
+    ok: result.ok,
+    message: result.message,
+    one: result.one,
+    two: result.two,
+    three: result.three,
+    rest: result.rest,
+    aTotal: result.aTotal,
+    detailTotal: result.detailTotal,
+    delivered: result.delivered,
+    hasDetail: result.hasDetail,
+    totalHasValue
+  };
 }
 function readDeliveredPayload(event) {
   const payload = event?.payload;
