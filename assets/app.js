@@ -638,7 +638,13 @@ function formatMinutes(minutes) {
   if (minutes === void 0) {
     return "\uACC4\uC0B0 \uBD88\uAC00";
   }
-  return `${Math.round(minutes)}\uBD84`;
+  const rounded = Math.round(minutes);
+  if (rounded < 60) {
+    return `${rounded}\uBD84`;
+  }
+  const hours = Math.floor(rounded / 60);
+  const rest = rounded % 60;
+  return rest === 0 ? `${hours}\uC2DC\uAC04` : `${hours}\uC2DC\uAC04 ${rest}\uBD84`;
 }
 function formatScope(scope) {
   if (typeof scope !== "string") return "\uC804\uCCB4 \uC5C5\uBB34";
@@ -1936,7 +1942,7 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/main.ts
-var APP_VERSION2 = "0.2.7-field-guardrails";
+var APP_VERSION2 = "0.2.8-field-ux";
 var BASE_ZONE_IDS = ["miju", "hils"];
 var MAX_REASONABLE_EXPECTED = 1200;
 var MAX_REASONABLE_ZONE = 800;
@@ -2093,17 +2099,9 @@ function renderWorkOrderStep() {
   return `
     <section class="panel focus">
       <p class="step">3 / \uC624\uB298 \uC21C\uC11C</p>
-      <h2>\uC791\uC5C5 \uC21C\uC11C \uC900\uBE44</h2>
-      <p class="hint">\uAE30\uBCF8 \uC21C\uC11C\uB97C \uB9CC\uB4E0 \uB4A4 \uD654\uC0B4\uD45C\uB85C \uC2E4\uC81C \uC9D0 \uC21C\uC11C\uC5D0 \uB9DE\uCDB0 \uC870\uC815\uD569\uB2C8\uB2E4.</p>
-      <div class="segmented">
-        <button data-action="set-work-order" data-order="miju,hils">\uBBF8\uC8FC \u2192 \uD790\uC2A4 \uD3B8\uC9D1</button>
-        <button data-action="set-work-order" data-order="hils,miju">\uD790\uC2A4 \u2192 \uBBF8\uC8FC \uD3B8\uC9D1</button>
-      </div>
-      <div class="segmented">
-        <button data-action="set-work-order" data-order="alt,hils,miju">\uB300\uCCB4 \u2192 \uD790\uC2A4 \u2192 \uBBF8\uC8FC \uD3B8\uC9D1</button>
-        <button data-action="set-work-order" data-order="hils,alt,miju">\uD790\uC2A4 \u2192 \uB300\uCCB4 \u2192 \uBBF8\uC8FC \uD3B8\uC9D1</button>
-      </div>
-      <p class="hint">\uCD94\uAC00 \uAD6C\uC5ED\uC740 \uC21C\uC11C \uD3B8\uC9D1 \uD654\uBA74\uC5D0\uC11C \uB354 \uBD99\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.</p>
+      <h2>\uC791\uC5C5 \uC21C\uC11C</h2>
+      <p class="hint">\uAE30\uBCF8 \uC21C\uC11C\uB294 \uBBF8\uC8FC, \uD790\uC2A4\uD14C\uC774\uD2B8, \uB300\uCCB4\uBC30\uC1A1\uC785\uB2C8\uB2E4. \uB2E4\uC74C \uD654\uBA74\uC5D0\uC11C \uD654\uC0B4\uD45C\uB85C \uBC14\uB85C \uBC14\uAFC0 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</p>
+      <button data-action="prepare-default-order">\uC624\uB298 \uC21C\uC11C \uC5F4\uAE30</button>
     </section>
   `;
 }
@@ -2115,7 +2113,10 @@ function renderZoneStartStep(zone) {
       <h2>${escapeHtml(zone.name)} \uC2DC\uC791</h2>
       <p class="hint">${zone.id === "miju" ? "\uBBF8\uC8FC\uB294 1,2,3\uB3D9\uACFC \uB098\uBA38\uC9C0 \uC218\uB7C9\uC744 \uB098\uB220 \uC785\uB825\uD569\uB2C8\uB2E4." : "\uBC30\uC1A1 \uC218\uB7C9\uACFC \uC815\uB9AC \uC2DC\uC791/\uC644\uB8CC\uB97C \uBD84\uB9AC\uD574\uC11C \uAE30\uB85D\uD569\uB2C8\uB2E4."}</p>
       ${orderEditor}
-      <button data-action="zone-start" data-zone="${zone.id}">${escapeHtml(zone.name)} \uC2DC\uC791</button>
+      <div class="segmented">
+        <button data-action="zone-start" data-zone="${zone.id}">${escapeHtml(zone.name)} \uC2DC\uC791</button>
+        ${isExtraZone(zone.id) ? `<button class="secondary" data-action="skip-zone" data-zone="${zone.id}">${escapeHtml(zone.name)} \uC5C6\uC74C</button>` : ""}
+      </div>
     </section>
   `;
 }
@@ -2149,28 +2150,23 @@ function renderZoneWorkStep(zone) {
 }
 function renderMijuWorkStep() {
   const checkpoint = getMijuCheckpoint();
-  const savedText = checkpoint ? `A\uAD6C\uAC04 \uC800\uC7A5\uB428: 1\uB3D9 ${checkpoint.one} / 2\uB3D9 ${checkpoint.two} / 3\uB3D9 ${checkpoint.three} / \uD569\uACC4 ${checkpoint.aTotal}` : "A\uAD6C\uAC04 \uC0C1\uC138\uB294 \uC120\uD0DD\uC785\uB2C8\uB2E4. \uBC14\uC05C \uB0A0\uC740 \uBBF8\uC8FC \uCD1D\uD569\uB9CC \uC785\uB825\uD574\uB3C4 \uB429\uB2C8\uB2E4.";
+  const savedText = checkpoint ? `A\uAD6C\uAC04 \uC800\uC7A5\uB428: 1\uB3D9 ${checkpoint.one} / 2\uB3D9 ${checkpoint.two} / 3\uB3D9 ${checkpoint.three} / \uD569\uACC4 ${checkpoint.aTotal}` : "1/2/3\uB3D9\uC744 \uBA3C\uC800 \uAE30\uB85D\uD55C \uB4A4 \uBBF8\uC8FC \uC804\uCCB4 \uC218\uB7C9\uC744 \uB123\uC73C\uBA74 \uB098\uBA38\uC9C0\uB294 \uC790\uB3D9 \uACC4\uC0B0\uB429\uB2C8\uB2E4.";
   return `
     <section class="panel focus">
       <p class="step">3 / \uBBF8\uC8FC</p>
       <h2>\uBBF8\uC8FC \uC218\uB7C9 \uC785\uB825</h2>
-      <label>\uBBF8\uC8FC \uCD1D\uD569<input id="miju-total-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="\uC608: 52"></label>
-      <details class="miju-detail">
-        <summary>1/2/3\uB3D9 \uC0C1\uC138 \uC785\uB825</summary>
-        <p class="hint">${savedText}</p>
-        <div class="form-grid compact-grid">
-          <label>1\uB3D9<input id="miju-1-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.one ?? ""}" placeholder="\uC608: 5"></label>
-          <label>2\uB3D9<input id="miju-2-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.two ?? ""}" placeholder="\uC608: 6"></label>
-          <label>3\uB3D9<input id="miju-3-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.three ?? ""}" placeholder="\uC608: 9"></label>
-        </div>
-        <button data-action="save-miju-detail" data-zone="miju">A\uAD6C\uAC04 \uC800\uC7A5</button>
-        ${checkpoint ? '<button class="secondary" data-action="clear-miju-detail" data-zone="miju">A\uAD6C\uAC04 \uC800\uC7A5\uAC12 \uCD08\uAE30\uD654</button>' : ""}
-        <label>\uB098\uBA38\uC9C0(5,6,7,8\uB3D9)<input id="miju-rest-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.rest ?? ""}" placeholder="\uC608: 32"></label>
-        <p class="hint">\uC0C1\uC138\uAC12\uC774 \uC788\uC73C\uBA74 1\uB3D9+2\uB3D9+3\uB3D9+\uB098\uBA38\uC9C0\uB85C \uBBF8\uC8FC \uCD1D\uD569\uC744 \uACC4\uC0B0\uD569\uB2C8\uB2E4.</p>
-      </details>
+      <p class="hint">${savedText}</p>
+      <div class="form-grid compact-grid">
+        <label>1\uB3D9<input id="miju-1-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.one ?? ""}" placeholder="\uC608: 44"></label>
+        <label>2\uB3D9<input id="miju-2-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.two ?? ""}" placeholder="\uC608: 55"></label>
+        <label>3\uB3D9<input id="miju-3-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.three ?? ""}" placeholder="\uC608: 54"></label>
+      </div>
+      <button data-action="save-miju-detail" data-zone="miju">1/2/3\uB3D9 \uAE30\uB85D</button>
+      ${checkpoint ? '<button class="secondary" data-action="clear-miju-detail" data-zone="miju">1/2/3\uB3D9 \uAE30\uB85D \uCD08\uAE30\uD654</button>' : ""}
+      <label>\uBBF8\uC8FC \uC804\uCCB4 \uC218\uB7C9<input id="miju-total-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="\uC608: 321"></label>
       <div class="miju-preview">
         <strong>\uC800\uC7A5 \uAE30\uC900</strong>
-        <span>\uCD1D\uD569\uB9CC \uC785\uB825 \uB610\uB294 \uC0C1\uC138 \uD569\uC0B0 \uC911 \uD558\uB098\uB85C \uC800\uC7A5\uB429\uB2C8\uB2E4.</span>
+        <span>\uB098\uBA38\uC9C0\uB294 \uBBF8\uC8FC \uC804\uCCB4 \uC218\uB7C9\uC5D0\uC11C 1/2/3\uB3D9 \uD569\uACC4\uB97C \uBE7C\uC11C \uC790\uB3D9 \uACC4\uC0B0\uB429\uB2C8\uB2E4.</span>
       </div>
       <button data-action="zone-end" data-zone="miju">\uBBF8\uC8FC \uC644\uB8CC</button>
     </section>
@@ -2214,20 +2210,28 @@ function renderExtraZoneWorkStep(zone) {
 function renderGenericZoneWorkStep(zoneId, options) {
   const sortingStarted = hasZoneEvent(zoneId, "sorting_start");
   const sortingEnded = hasZoneEvent(zoneId, "sorting_end");
+  const deliveryStarted = hasZoneEvent(zoneId, "delivery_start");
+  const isReadyForCount = deliveryStarted || sortingEnded;
   return `
     <section class="panel focus">
       <p class="step">${options.step}</p>
       <h2>${options.title}</h2>
-      <div class="form-grid">
-        <label>\uBC30\uC1A1 \uC218\uB7C9<input id="${options.countInputId}" type="number" inputmode="numeric" min="0" max="${MAX_REASONABLE_ZONE}" placeholder="\uC608: 117"></label>
-        <label>\uC815\uB9AC \uC2DC\uAC04<input id="cleanup-input" type="number" inputmode="numeric" min="1" value="30"></label>
-      </div>
-      <div class="segmented triple">
-        <button data-action="sorting-start" data-zone="${zoneId}" ${sortingStarted ? "disabled" : ""}>\uC815\uB9AC \uC2DC\uC791</button>
-        <button data-action="sorting-end" data-zone="${zoneId}" ${!sortingStarted || sortingEnded ? "disabled" : ""}>\uC815\uB9AC \uC644\uB8CC</button>
+      ${!sortingStarted && !deliveryStarted ? `
+        <p class="hint">\uC815\uB9AC \uC791\uC5C5\uC774 \uC788\uC73C\uBA74 \uC815\uB9AC \uC2DC\uC791, \uBC14\uB85C \uBC30\uC1A1\uC774\uBA74 \uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791\uC744 \uB204\uB985\uB2C8\uB2E4.</p>
+        <div class="segmented">
+          <button data-action="sorting-start" data-zone="${zoneId}">\uC815\uB9AC \uC2DC\uC791</button>
+          <button data-action="delivery-start" data-zone="${zoneId}">\uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791</button>
+        </div>
+      ` : ""}
+      ${sortingStarted && !sortingEnded ? `
+        <p class="hint">\uC815\uB9AC\uAC00 \uB05D\uB098\uBA74 \uBC30\uC1A1 \uC218\uB7C9 \uC785\uB825 \uB2E8\uACC4\uB85C \uB118\uC5B4\uAC11\uB2C8\uB2E4.</p>
+        <button data-action="sorting-end" data-zone="${zoneId}">\uC815\uB9AC \uC644\uB8CC</button>
+      ` : ""}
+      ${isReadyForCount ? `
+        <label>\uC804\uCCB4 \uC218\uB7C9<input id="${options.countInputId}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="\uC608: 560"></label>
+        <p class="hint">\uB4A4 \uAD6C\uC5ED\uC5D0\uC11C\uB294 \uB2F9\uC77C \uC804\uCCB4 \uC218\uB7C9\uC744 \uB123\uC5B4\uB3C4 \uB429\uB2C8\uB2E4. \uC774\uC804 \uC644\uB8CC \uC218\uB7C9\uC740 \uC571\uC774 \uC790\uB3D9\uC73C\uB85C \uBE8D\uB2C8\uB2E4.</p>
         <button data-action="zone-end" data-zone="${zoneId}">${options.endLabel}</button>
-      </div>
-      <p class="hint">\uBE44\uBBF8\uC8FC \uAD6C\uC5ED\uC740 \uC774\uC804 \uAD6C\uC5ED \uC644\uB8CC\uB97C \uC774\uB3D9 \uCD9C\uBC1C, \uC815\uB9AC \uC2DC\uC791\uC744 \uB3C4\uCC29\uC73C\uB85C \uBD05\uB2C8\uB2E4. \uC774\uB3D9\uC774 0\uBD84\uC774\uBA74 5\uBD84\uC73C\uB85C \uBCF4\uC815\uD569\uB2C8\uB2E4.</p>
+      ` : ""}
     </section>
   `;
 }
@@ -2333,11 +2337,11 @@ function renderCompletedZoneEditForm(zoneId) {
       </div>
       <div class="form-grid edit-count-grid">
         ${zoneId === "miju" ? `
-            <label>\uBBF8\uC8FC \uCD1D\uD569<input id="edit-${zoneId}-total" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}"></label>
             <label>1\uB3D9<input id="edit-${zoneId}-1" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${one || ""}"></label>
             <label>2\uB3D9<input id="edit-${zoneId}-2" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${two || ""}"></label>
             <label>3\uB3D9<input id="edit-${zoneId}-3" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${three || ""}"></label>
-            <label>\uB098\uBA38\uC9C0<input id="edit-${zoneId}-rest" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${bTotal || ""}"></label>
+            <label>\uBBF8\uC8FC \uC804\uCCB4<input id="edit-${zoneId}-total" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}"></label>
+            <label>\uB098\uBA38\uC9C0<input value="${bTotal || ""}" readonly></label>
           ` : `
             <label>\uBC30\uC1A1 \uC218\uB7C9<input id="edit-${zoneId}-delivered" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}"></label>
             <label>\uC815\uB9AC \uC2DC\uC791<input id="edit-${zoneId}-sorting-start" type="datetime-local" value="${formatIsoForInput(sortingStart?.at)}"></label>
@@ -2425,6 +2429,11 @@ async function handleAction(button) {
     render();
     return;
   }
+  if (action === "prepare-default-order") {
+    ensureDefaultWorkOrder();
+    await saveAndRender();
+    return;
+  }
   if (action === "fix-cleanup") {
     await correctCleanup(zoneId);
     return;
@@ -2473,6 +2482,11 @@ async function handleAction(button) {
     await saveAndRender();
     return;
   }
+  if (action === "skip-zone" && zoneId) {
+    skipZone(zoneId);
+    await saveAndRender();
+    return;
+  }
   if (action === "add-event") {
     addIncidentEvent();
     await saveAndRender();
@@ -2503,6 +2517,7 @@ async function handleAction(button) {
   if (action === "zone-start" && zoneId) addZoneStart(zoneId);
   if (action === "sorting-start" && zoneId) addZoneEvent("sorting_start", zoneId);
   if (action === "sorting-end" && zoneId) addZoneEvent("sorting_end", zoneId);
+  if (action === "delivery-start" && zoneId) addDeliveryStart(zoneId);
   if (action === "zone-end" && zoneId) await addZoneEnd(zoneId);
   if (action === "close-day-now" && isUnpaidHelperDay(currentDay)) {
     const closeAt = nowIso();
@@ -2513,6 +2528,9 @@ async function handleAction(button) {
     const closeAt = isUnpaidHelperDay(currentDay) ? readHelperCloseAt() : nowIso();
     if (isUnpaidHelperDay(currentDay)) addUnpaidHelperEvent(closeAt);
     addEvent("day_close", void 0, closeAt);
+    await saveAndRender();
+    toast("\uC5C5\uBB34 \uC885\uB8CC \uC800\uC7A5 \uC644\uB8CC. \uBC31\uC5C5 \uB0B4\uBCF4\uB0B4\uAE30\uB3C4 \uAC00\uB2A5\uD569\uB2C8\uB2E4.");
+    return;
   }
   await saveAndRender();
 }
@@ -2581,11 +2599,22 @@ function setWorkOrder(orderValue) {
     ensureZone(id, getZoneName2(id), index + 1);
   });
 }
+function ensureDefaultWorkOrder() {
+  if (!currentDay || currentDay.zones.length > 0) return;
+  ensureZone("miju", "\uBBF8\uC8FC", 1);
+  ensureZone("hils", "\uD790\uC2A4\uD14C\uC774\uD2B8", 2);
+  ensureZone(createExtraZoneId("alt"), "\uB300\uCCB4\uBC30\uC1A1", 3);
+}
 function addZoneToOrder(kind, requestedName) {
   if (!currentDay || hasAnyZoneStarted()) return;
   const id = createExtraZoneId(kind);
   const name = kind === "alt" ? getNextAltZoneName() : requestedName?.trim() || "\uCD94\uAC00 \uAD6C\uC5ED";
   ensureZone(id, name, getNextZoneOrder());
+  normalizeZoneOrders();
+}
+function skipZone(zoneId) {
+  if (!currentDay || hasZoneStarted(zoneId)) return;
+  currentDay.zones = currentDay.zones.filter((zone) => zone.id !== zoneId);
   normalizeZoneOrders();
 }
 function moveZone(zoneId, direction) {
@@ -2666,21 +2695,31 @@ function addZoneEvent(type, zoneId) {
   currentDay = createEvent(currentDay, { type, at: resolveZoneEventAt(type, zoneId), zoneId });
   linkLatestEvent(zoneId, type, type === "sorting_start" ? "sortingStartEventId" : "sortingEndEventId");
 }
+function addDeliveryStart(zoneId) {
+  if (!currentDay || hasZoneEvent(zoneId, "delivery_start")) return;
+  ensureZone(zoneId);
+  currentDay = createEvent(currentDay, { type: "delivery_start", at: nowIso(), zoneId });
+  linkLatestEvent(zoneId, "delivery_start", "deliveryStartEventId");
+}
 async function addZoneEnd(zoneId) {
   if (!currentDay || hasZoneEnded(zoneId)) return;
   const zone = ensureZone(zoneId);
-  if (zoneId !== "miju" && !hasZoneEvent(zoneId, "sorting_start")) {
-    toast("\uC815\uB9AC \uC2DC\uC791\uC744 \uBA3C\uC800 \uAE30\uB85D\uD574\uC57C \uD569\uB2C8\uB2E4.");
+  if (zoneId !== "miju" && !hasZoneEvent(zoneId, "sorting_start") && !hasZoneEvent(zoneId, "delivery_start")) {
+    toast("\uC815\uB9AC \uC2DC\uC791 \uB610\uB294 \uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791\uC744 \uBA3C\uC800 \uC120\uD0DD\uD558\uC138\uC694.");
     return;
   }
   if (zoneId !== "miju" && !hasZoneEvent(zoneId, "sorting_end")) {
-    toast("\uC815\uB9AC \uC644\uB8CC\uB97C \uBA3C\uC800 \uAE30\uB85D\uD574\uC57C \uD569\uB2C8\uB2E4.");
+    if (hasZoneEvent(zoneId, "sorting_start")) toast("\uC815\uB9AC \uC644\uB8CC\uB97C \uBA3C\uC800 \uAE30\uB85D\uD574\uC57C \uD569\uB2C8\uB2E4.");
     return;
   }
   const mijuParts = zoneId === "miju" ? readMijuPayloadParts() : void 0;
   const deliveredInput = zoneId === "miju" ? void 0 : readZoneDelivered(zoneId);
   if (mijuParts?.ok === false) {
     toast(mijuParts.message ?? "\uBBF8\uC8FC \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.");
+    return;
+  }
+  if (zoneId === "miju" && mijuParts?.hasDetail && !mijuParts.totalHasValue) {
+    toast("\uBBF8\uC8FC \uC804\uCCB4 \uC218\uB7C9\uC744 \uC785\uB825\uD574\uC57C \uB098\uBA38\uC9C0\uB97C \uC790\uB3D9 \uACC4\uC0B0\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.");
     return;
   }
   const rawDelivered = mijuParts?.delivered ?? deliveredInput?.value ?? 0;
@@ -3036,6 +3075,9 @@ function getExtraZones() {
   if (!currentDay) return [];
   return currentDay.zones.filter((zone) => !BASE_ZONE_IDS.includes(zone.id)).sort((a, b) => a.order - b.order);
 }
+function isExtraZone(zoneId) {
+  return !BASE_ZONE_IDS.includes(zoneId);
+}
 function getActiveExtraZone() {
   return getExtraZones().find((zone) => hasZoneStarted(zone.id) && !hasZoneEnded(zone.id));
 }
@@ -3327,10 +3369,18 @@ function formatTime2(iso) {
   return new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
 function formatMin(value) {
-  return value === void 0 ? "-" : `${Math.round(value)}\uBD84`;
+  return formatDuration(value);
 }
 function formatEff(value) {
   return value === void 0 ? "-" : `${Math.round(value)}\uAC1C/\uC2DC\uAC04`;
+}
+function formatDuration(value) {
+  if (value === void 0) return "-";
+  const minutes = Math.round(value);
+  if (minutes < 60) return `${minutes}\uBD84`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}\uC2DC\uAC04` : `${hours}\uC2DC\uAC04 ${rest}\uBD84`;
 }
 function escapeHtml(value) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
