@@ -80,6 +80,34 @@ button.danger {
   background: white;
 }
 
+.tabbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 14px;
+  padding: 6px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.tabbar button {
+  min-height: 42px;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  padding: 0 6px;
+}
+
+.tabbar button.active {
+  background: #111827;
+  color: white;
+}
+
 .focus {
   border-color: #2563eb;
   box-shadow: 0 10px 30px rgb(37 99 235 / 12%);
@@ -454,6 +482,87 @@ select {
   padding: 12px;
 }
 
+.timeline-log {
+  display: grid;
+  gap: 0;
+  margin-top: 12px;
+  border-left: 2px solid #cbd5e1;
+  padding-left: 14px;
+}
+
+.timeline-entry {
+  position: relative;
+  padding: 0 0 18px 12px;
+}
+
+.timeline-entry::before {
+  content: "";
+  position: absolute;
+  left: -21px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #64748b;
+  box-shadow: 0 0 0 4px #f8fafc;
+}
+
+.timeline-entry.depart::before,
+.timeline-entry.done::before {
+  background: #22c55e;
+}
+
+.timeline-entry.arrive::before,
+.timeline-entry.zone::before {
+  background: #60a5fa;
+}
+
+.timeline-entry.sorting::before {
+  background: #a78bfa;
+}
+
+.timeline-entry strong,
+.timeline-entry time,
+.timeline-entry p {
+  display: block;
+}
+
+.timeline-entry strong {
+  font-size: 15px;
+}
+
+.timeline-entry time {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.timeline-entry p {
+  margin: 4px 0 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.backup-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.backup-list article {
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.backup-list p {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 13px;
+}
+
 .row-actions {
   margin-top: 10px;
   flex-wrap: wrap;
@@ -498,6 +607,18 @@ select {
 
   .row-actions button {
     width: 100%;
+  }
+
+  .tabbar {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+    padding: 4px;
+  }
+
+  .tabbar button {
+    min-height: 38px;
+    font-size: 11px;
+    padding: 0 2px;
   }
 
   .zone-card div,
