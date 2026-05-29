@@ -2024,9 +2024,15 @@ function getBrowserIndexedDb() {
   return indexedDB;
 }
 
-// src/app/main.ts
+// src/app/version.ts
 var APP_VERSION2 = "0.2.9-field-log-report";
 var APP_UPDATED_LABEL = "2026-05-29 \uC218\uC815\uBCF8";
+var CACHE_VERSION = "v10";
+var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
+var TOPBAR_VERSION_LABEL = CACHE_VERSION;
+var SETTINGS_VERSION_LABEL = `${APP_VERSION2} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
+
+// src/app/main.ts
 var BASE_ZONE_IDS = ["miju", "hils"];
 var MAX_REASONABLE_EXPECTED = 1200;
 var MAX_REASONABLE_ZONE = 800;
@@ -2076,7 +2082,7 @@ function render() {
     <main class="shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">phoneInstall alpha \xB7 v${APP_VERSION2} \xB7 ${APP_UPDATED_LABEL}</p>
+          <p class="eyebrow">phoneInstall alpha \xB7 ${TOPBAR_VERSION_LABEL}</p>
           <h1>\uBC30\uC1A1\uB9C8\uC2A4\uD130</h1>
         </div>
         <button class="icon-btn" data-action="refresh" title="\uC0C8\uB85C\uACE0\uCE68">\uC0C8\uB85C\uACE0\uCE68</button>
@@ -2196,7 +2202,7 @@ function renderBackupSettingsTab() {
       <div class="backup-list">
         <article>
           <strong>\uC571 \uBC84\uC804</strong>
-          <p>v${APP_VERSION2} \xB7 ${APP_UPDATED_LABEL}</p>
+          <p>${SETTINGS_VERSION_LABEL}</p>
         </article>
         <article>
           <strong>\uC790\uB3D9\uC800\uC7A5</strong>
