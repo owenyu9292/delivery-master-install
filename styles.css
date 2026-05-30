@@ -426,6 +426,159 @@ select {
   margin-top: 10px;
 }
 
+.stats-subtabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.stats-subtabs button {
+  min-height: 40px;
+  border-radius: 6px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 13px;
+  padding: 0 6px;
+}
+
+.stats-subtabs button.active {
+  background: #111827;
+  color: white;
+}
+
+.period-nav,
+.date-search-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.period-nav strong {
+  text-align: center;
+  font-size: 14px;
+}
+
+.date-search-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.stats-grid article,
+.period-zone-list article,
+.period-day-list article {
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.stats-grid span,
+.period-day-list span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stats-grid strong,
+.period-day-list strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 15px;
+}
+
+.compact-stats {
+  grid-template-columns: 1fr;
+}
+
+.weekday-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.weekday-grid article {
+  text-align: center;
+  padding: 8px 4px;
+}
+
+.weekday-grid strong {
+  font-size: 13px;
+}
+
+.period-zone-list,
+.period-day-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.period-zone-list p {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 13px;
+}
+
+.period-day-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.date-result {
+  display: grid;
+  gap: 10px;
+}
+
+.date-result h3 {
+  margin: 8px 0 0;
+  font-size: 15px;
+}
+
+.empty-state {
+  margin: 10px 0 0;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 12px;
+}
+
+.holiday-state {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  padding: 12px;
+}
+
+.holiday-state strong {
+  color: #166534;
+  font-size: 18px;
+}
+
+.holiday-state p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.timeline-log.compact {
+  margin-top: 0;
+}
+
 .ratio-card > div:first-child {
   display: flex;
   align-items: center;
@@ -676,5 +829,21 @@ select {
   .zone-card div,
   .ratio-card > div:first-child {
     align-items: flex-start;
+  }
+
+  .period-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .period-nav strong {
+    order: -1;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .weekday-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 }

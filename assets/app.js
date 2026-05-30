@@ -988,37 +988,6 @@ function buildMonthlyStatsScreen(history, monthKey) {
     quantityComparison: buildZoneQuantityComparison(monthDays)
   };
 }
-function buildWeeklyStatsScreen(history, weekKey) {
-  const weekDays = history.filter((dayRecord) => getIsoWeekKey(dayRecord.date) === weekKey);
-  const calculations = weekDays.map((dayRecord) => calculateDay(dayRecord));
-  const totalCount = calculations.reduce((sum, calculation) => sum + calculation.totals.totalCount, 0);
-  const deliveredCount = calculations.reduce((sum, calculation) => sum + calculation.totals.deliveredCount, 0);
-  const failedCount = calculations.reduce((sum, calculation) => sum + calculation.totals.failedCount, 0);
-  const extraCount = calculations.reduce((sum, calculation) => sum + calculation.totals.extraCount, 0);
-  const totalElapsedMinutes = sumOptional(
-    calculations.map((calculation) => calculation.totals.totalElapsedMinutes)
-  );
-  const deliveryMinutes = sumOptional(calculations.map((calculation) => calculation.totals.deliveryMinutes));
-  const efficiencyPerHour = calculateAverageEfficiency(calculations);
-  return {
-    title: "Weekly Stats",
-    weekKey,
-    dayCount: weekDays.length,
-    statusCounts: countStatuses(weekDays.map((dayRecord) => createDateSummary(dayRecord))),
-    recoveryStatusCounts: countRecoveryStatuses(weekDays.map((dayRecord) => createDateSummary(dayRecord))),
-    totals: {
-      totalCount,
-      deliveredCount,
-      failedCount,
-      extraCount,
-      totalElapsedMinutes,
-      deliveryMinutes,
-      efficiencyPerHour
-    },
-    averageEfficiencyPerHour: efficiencyPerHour,
-    quantityComparison: buildZoneQuantityComparison(weekDays)
-  };
-}
 function buildSettingsScreen(dayRecord) {
   return {
     title: "Settings",
@@ -1193,14 +1162,6 @@ function gcd(left, right) {
     b = next;
   }
   return a;
-}
-function getIsoWeekKey(date) {
-  const parsed = /* @__PURE__ */ new Date(date + "T00:00:00Z");
-  const day = parsed.getUTCDay() || 7;
-  parsed.setUTCDate(parsed.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(parsed.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((parsed.getTime() - yearStart.getTime()) / 864e5 + 1) / 7);
-  return `${parsed.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 function roundTo(value, digits) {
   const factor = 10 ** digits;
@@ -2067,6 +2028,10 @@ var currentDay = null;
 var historyDays = [];
 var lastImportFeedback = null;
 var activeTab = "work";
+var activeStatsTab = "week";
+var statsWeekOffset = 0;
+var statsMonthOffset = 0;
+var statsSelectedDate = todayKey();
 var appRoot = document.querySelector("#app");
 if (!appRoot) throw new Error("Missing #app root");
 var root = appRoot;
@@ -2091,8 +2056,6 @@ function render() {
   const report = buildDailyReport(currentDay, calculation, { title: "Delivery Master Install Report" });
   const pendingZone = currentDay.zones.find((zone) => hasMissingCleanupFinish(currentDay, zone.id));
   const history = historyDays.length > 0 ? historyDays : [currentDay];
-  const weeklyStats = buildWeeklyStatsScreen(history, getIsoWeekKey2(currentDay.date));
-  const monthlyStats = buildMonthlyStatsScreen(history, currentDay.date.slice(0, 7));
   root.innerHTML = `
     <main class="shell">
       <header class="topbar">
@@ -2110,13 +2073,14 @@ function render() {
       </section>
 
       ${renderTabs()}
-      ${renderActiveTabContent(calculation, report, weeklyStats.quantityComparison, monthlyStats.quantityComparison, pendingZone)}
+      ${renderActiveTabContent(calculation, report, history, pendingZone)}
     </main>
   `;
   root.querySelectorAll("[data-action]").forEach((button) => {
     button.addEventListener("click", () => void handleAction(button));
   });
   bindNumericLimits();
+  bindStatsDateInput();
 }
 function renderTabs() {
   const tabs = [
@@ -2134,14 +2098,14 @@ function renderTabs() {
     </nav>
   `;
 }
-function renderActiveTabContent(calculation, report, weeklyComparison, monthlyComparison, pendingZone) {
+function renderActiveTabContent(calculation, report, history, pendingZone) {
   switch (activeTab) {
     case "log":
       return renderLogTab(calculation);
     case "report":
       return renderReportTab(report);
     case "stats":
-      return renderStatsTab(weeklyComparison, monthlyComparison);
+      return renderStatsTab(history);
     case "backup":
       return renderBackupSettingsTab();
     case "work":
@@ -2199,13 +2163,278 @@ function renderReportTab(report) {
     </section>
   `;
 }
-function renderStatsTab(weeklyComparison, monthlyComparison) {
+function renderStatsTab(history) {
   return `
     <section class="panel">
-      <h2>\uC8FC\uAC04/\uC6D4\uAC04 \uC218\uB7C9 \uBE44\uAD50</h2>
-      ${renderQuantityComparison("\uC774\uBC88 \uC8FC", weeklyComparison)}
-      ${renderQuantityComparison("\uC774\uBC88 \uB2EC", monthlyComparison)}
+      <h2>\uD1B5\uACC4</h2>
+      <p class="hint">\uBE44\uC728\uCE74\uB4DC\uB97C \uBA3C\uC800 \uBCF4\uACE0, \uD544\uC694\uD558\uBA74 \uC8FC\uAC04\xB7\uC6D4\uAC04\xB7\uB0A0\uC9DC\uBCC4 \uD750\uB984\uC744 \uC544\uB798\uC5D0\uC11C \uD655\uC778\uD569\uB2C8\uB2E4.</p>
+      ${renderStatsSubtabs()}
+      ${activeStatsTab === "week" ? renderWeeklyStats(history) : ""}
+      ${activeStatsTab === "month" ? renderMonthlyStats(history) : ""}
+      ${activeStatsTab === "date" ? renderDateStats(history) : ""}
     </section>
+  `;
+}
+function renderStatsSubtabs() {
+  const tabs = [
+    { key: "week", label: "\uC8FC\uAC04" },
+    { key: "month", label: "\uC6D4\uAC04" },
+    { key: "date", label: "\uB0A0\uC9DC\uC870\uD68C" }
+  ];
+  return `
+    <div class="stats-subtabs">
+      ${tabs.map((tab) => `
+        <button class="${activeStatsTab === tab.key ? "active" : ""}" data-action="set-stats-tab" data-stats-tab="${tab.key}">${tab.label}</button>
+      `).join("")}
+    </div>
+  `;
+}
+function renderWeeklyStats(history) {
+  const range = getWeekRange(statsWeekOffset);
+  const days = getHistoryInRange(history, range.start, range.end);
+  const stats = buildPeriodStats(days);
+  const title = statsWeekOffset === 0 ? "\uC774\uBC88 \uC8FC \uBE44\uC728" : `${formatDateRange(range.start, range.end)} \uBE44\uC728`;
+  return `
+    <div class="period-nav">
+      <button class="secondary" data-action="stats-week-prev">\uC774\uC804 \uC8FC</button>
+      <strong>${formatDateRange(range.start, range.end)}</strong>
+      <button class="secondary" data-action="stats-week-next" ${statsWeekOffset >= 0 ? "disabled" : ""}>\uB2E4\uC74C \uC8FC</button>
+    </div>
+    ${renderQuantityComparison(title, stats.quantityComparison)}
+    ${renderPeriodSummary(stats)}
+    ${renderZonePeriodCards(stats)}
+    ${renderWeekDayCards(history, range.start, range.end)}
+  `;
+}
+function renderMonthlyStats(history) {
+  const range = getMonthRange(statsMonthOffset);
+  const days = getHistoryInRange(history, range.start, range.end);
+  const stats = buildPeriodStats(days);
+  const title = statsMonthOffset === 0 ? "\uC774\uBC88 \uB2EC \uBE44\uC728" : `${formatMonthTitle(range.start)} \uBE44\uC728`;
+  return `
+    <div class="period-nav">
+      <button class="secondary" data-action="stats-month-prev">\uC774\uC804 \uB2EC</button>
+      <strong>${formatMonthTitle(range.start)}</strong>
+      <button class="secondary" data-action="stats-month-next" ${statsMonthOffset >= 0 ? "disabled" : ""}>\uB2E4\uC74C \uB2EC</button>
+    </div>
+    ${renderQuantityComparison(title, stats.quantityComparison)}
+    ${renderPeriodSummary(stats)}
+    ${renderMonthlyVariation(stats)}
+    ${renderZonePeriodCards(stats)}
+    ${renderWeekdayAverage(days)}
+    ${renderMonthDayCards(history, range.start, range.end)}
+  `;
+}
+function renderDateStats(history) {
+  const selected = history.find((dayRecord) => dayRecord.date === statsSelectedDate);
+  const calculation = selected ? calculateDay(selected) : void 0;
+  const report = selected && calculation ? buildDailyReport(selected, calculation, { title: "Delivery Master Install Report" }) : void 0;
+  return `
+    <div class="date-search-row">
+      <label>\uB0A0\uC9DC \uC120\uD0DD<input id="stats-date-input" type="date" value="${statsSelectedDate}"></label>
+      <button class="secondary" data-action="stats-date-today">\uC624\uB298</button>
+    </div>
+    ${selected && calculation && report ? `
+        <div class="date-result">
+          <h3>${formatKoreanDateLabel(selected.date)}</h3>
+          <div class="summary">
+            <span>\uCD1D ${calculation.totals.totalCount}\uAC1C</span>
+            <span>\uBC30\uC1A1 ${formatMin(calculation.totals.deliveryMinutes)}</span>
+            <span>\uD6A8\uC728 ${formatEff(calculation.totals.efficiencyPerHour)}</span>
+          </div>
+          <h3>\uB85C\uADF8</h3>
+          <div class="timeline-log compact">
+            ${buildLogEntriesForDay(selected, calculation).map((entry) => `
+              <article class="timeline-entry ${entry.kind}">
+                <div>
+                  <strong>${entry.title}</strong>
+                  <time>${entry.time}</time>
+                  ${entry.detail ? `<p>${entry.detail}</p>` : ""}
+                </div>
+              </article>
+            `).join("")}
+          </div>
+          <h3>\uB9AC\uD3EC\uD2B8</h3>
+          <pre class="report">${escapeHtml(report.text)}</pre>
+        </div>
+      ` : renderMissingDateState(statsSelectedDate)}
+  `;
+}
+function buildPeriodStats(days) {
+  const pairs = days.map((dayRecord) => ({ dayRecord, calculation: calculateDay(dayRecord) }));
+  const deliveryPairs = pairs.filter((pair) => pair.calculation.totals.totalCount > 0);
+  const totalQuantity = deliveryPairs.reduce((sum, pair) => sum + pair.calculation.totals.deliveredCount, 0);
+  const expectedValues = deliveryPairs.map((pair) => getExpectedTotalForDay(pair.dayRecord)).filter((value) => typeof value === "number");
+  const expectedQuantity = expectedValues.length > 0 ? expectedValues.reduce((sum, value) => sum + value, 0) : void 0;
+  const efficiencies = deliveryPairs.map((pair) => pair.calculation.totals.efficiencyPerHour).filter((value) => typeof value === "number" && value > 0 && value < 300);
+  const daySummaries = deliveryPairs.map((pair) => ({
+    date: pair.dayRecord.date,
+    totalQuantity: pair.calculation.totals.deliveredCount,
+    efficiencyPerHour: pair.calculation.totals.efficiencyPerHour
+  }));
+  return {
+    totalQuantity,
+    expectedQuantity,
+    scanMiss: expectedQuantity === void 0 ? void 0 : totalQuantity - expectedQuantity,
+    workDays: deliveryPairs.length,
+    totalElapsedMinutes: sumDefined2(deliveryPairs.map((pair) => pair.calculation.totals.totalElapsedMinutes)),
+    deliveryMinutes: sumDefined2(deliveryPairs.map((pair) => pair.calculation.totals.deliveryMinutes)),
+    averageEfficiencyPerHour: efficiencies.length > 0 ? efficiencies.reduce((sum, value) => sum + value, 0) / efficiencies.length : void 0,
+    dailyAverage: deliveryPairs.length > 0 ? totalQuantity / deliveryPairs.length : void 0,
+    maxDay: daySummaries.length > 0 ? [...daySummaries].sort((left, right) => right.totalQuantity - left.totalQuantity)[0] : void 0,
+    minDay: daySummaries.length > 0 ? [...daySummaries].sort((left, right) => left.totalQuantity - right.totalQuantity)[0] : void 0,
+    quantityComparison: buildQuantityComparisonFromPairs(pairs),
+    zoneSummaries: buildZonePeriodSummaries(pairs)
+  };
+}
+function buildQuantityComparisonFromPairs(pairs) {
+  const quantities = {
+    miju: 0,
+    hils: 0,
+    alternate: 0
+  };
+  for (const pair of pairs) {
+    for (const zone of pair.calculation.zones) {
+      quantities[getZoneBucket(pair.dayRecord, zone.zoneId)] += zone.counts.delivered;
+    }
+  }
+  const totalQuantity = quantities.miju + quantities.hils + quantities.alternate;
+  const buckets = ["miju", "hils", "alternate"].map((key) => ({
+    key,
+    label: formatBucketLabel(key),
+    quantity: quantities[key],
+    ratioPart: quantities[key],
+    percent: totalQuantity > 0 ? Math.round(quantities[key] / totalQuantity * 1e3) / 10 : 0
+  }));
+  return {
+    basis: "deliveredCount",
+    totalQuantity,
+    ratioLabel: totalQuantity > 0 ? `${quantities.miju}:${quantities.hils}:${quantities.alternate}` : "\uB370\uC774\uD130 \uC5C6\uC74C",
+    buckets
+  };
+}
+function buildZonePeriodSummaries(pairs) {
+  const zones = /* @__PURE__ */ new Map();
+  for (const pair of pairs) {
+    for (const zone of pair.calculation.zones) {
+      const label = getZoneNameFromDay(pair.dayRecord, zone.zoneId);
+      const current = zones.get(label) ?? { label, quantity: 0, deliveryMinutes: 0, efficiencies: [] };
+      current.quantity += zone.counts.delivered;
+      current.deliveryMinutes += zone.deliveryMinutes ?? 0;
+      if (zone.efficiencyPerHour !== void 0 && zone.efficiencyPerHour > 0 && zone.efficiencyPerHour < 300) {
+        current.efficiencies.push(zone.efficiencyPerHour);
+      }
+      zones.set(label, current);
+    }
+  }
+  return [...zones.values()].filter((zone) => zone.quantity > 0 || zone.deliveryMinutes > 0).map((zone) => ({
+    label: zone.label,
+    quantity: zone.quantity,
+    deliveryMinutes: zone.deliveryMinutes > 0 ? zone.deliveryMinutes : void 0,
+    efficiencyPerHour: zone.efficiencies.length > 0 ? zone.efficiencies.reduce((sum, value) => sum + value, 0) / zone.efficiencies.length : void 0
+  })).sort((left, right) => right.quantity - left.quantity);
+}
+function renderPeriodSummary(stats) {
+  return `
+    <div class="stats-grid">
+      <article><span>\uCD1D \uBC30\uC1A1</span><strong>${stats.totalQuantity}\uAC1C</strong></article>
+      <article><span>\uADFC\uBB34\uC77C</span><strong>${stats.workDays}\uC77C</strong></article>
+      <article><span>\uD3C9\uADE0 \uD6A8\uC728</span><strong>${formatEff(stats.averageEfficiencyPerHour)}</strong></article>
+      <article><span>\uC2A4\uCE94\uCC28</span><strong>${formatScanMiss(stats.scanMiss)}</strong></article>
+      <article><span>\uBC30\uC1A1 \uC2DC\uAC04</span><strong>${formatMin(stats.deliveryMinutes)}</strong></article>
+      <article><span>\uC77C \uD3C9\uADE0</span><strong>${stats.dailyAverage === void 0 ? "-" : `${Math.round(stats.dailyAverage)}\uAC1C`}</strong></article>
+    </div>
+  `;
+}
+function renderMonthlyVariation(stats) {
+  return `
+    <div class="stats-grid compact-stats">
+      <article><span>\uCD5C\uACE0 \uBB3C\uB7C9</span><strong>${stats.maxDay ? `${formatShortDate(stats.maxDay.date)} \xB7 ${stats.maxDay.totalQuantity}\uAC1C` : "-"}</strong></article>
+      <article><span>\uCD5C\uC800 \uBB3C\uB7C9</span><strong>${stats.minDay ? `${formatShortDate(stats.minDay.date)} \xB7 ${stats.minDay.totalQuantity}\uAC1C` : "-"}</strong></article>
+    </div>
+  `;
+}
+function renderZonePeriodCards(stats) {
+  if (stats.zoneSummaries.length === 0) return `<p class="empty-state">\uAD6C\uC5ED\uBCC4 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.</p>`;
+  return `
+    <div class="period-zone-list">
+      ${stats.zoneSummaries.map((zone) => `
+        <article>
+          <strong>${zone.label}</strong>
+          <p>${zone.quantity}\uAC1C \xB7 \uBC30\uC1A1 ${formatMin(zone.deliveryMinutes)} \xB7 \uD6A8\uC728 ${formatEff(zone.efficiencyPerHour)}</p>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+function renderWeekdayAverage(days) {
+  const buckets = ["\uC77C", "\uC6D4", "\uD654", "\uC218", "\uBAA9", "\uAE08", "\uD1A0"].map((label) => ({ label, total: 0, count: 0 }));
+  for (const dayRecord of days) {
+    const calculation = calculateDay(dayRecord);
+    if (calculation.totals.deliveredCount <= 0) continue;
+    const day = parseDateKey(dayRecord.date).getDay();
+    buckets[day].total += calculation.totals.deliveredCount;
+    buckets[day].count += 1;
+  }
+  return `
+    <div class="stats-grid weekday-grid">
+      ${buckets.map((bucket) => `
+        <article>
+          <span>${bucket.label}</span>
+          <strong>${bucket.count > 0 ? `${Math.round(bucket.total / bucket.count)}\uAC1C` : "-"}</strong>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+function renderWeekDayCards(history, start, end) {
+  const dates = getDateKeysInRange(start, end);
+  return `
+    <div class="period-day-list">
+      ${dates.map((date) => renderDayStatsCard(date, history.find((dayRecord) => dayRecord.date === date))).join("")}
+    </div>
+  `;
+}
+function renderMonthDayCards(history, start, end) {
+  const today = todayKey();
+  const dates = getDateKeysInRange(start, end).filter(
+    (date) => date <= today || history.some((dayRecord) => dayRecord.date === date)
+  );
+  if (dates.length === 0) return `<p class="empty-state">\uC774 \uB2EC\uC5D0 \uD45C\uC2DC\uD560 \uB0A0\uC9DC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.</p>`;
+  return `
+    <div class="period-day-list">
+      ${dates.map((date) => renderDayStatsCard(date, history.find((dayRecord) => dayRecord.date === date))).join("")}
+    </div>
+  `;
+}
+function renderDayStatsCard(date, dayRecord) {
+  if (!dayRecord) {
+    const detail2 = isVirtualRegularHoliday(date) ? "\uC815\uAE30\uD734\uBB34" : "\uB370\uC774\uD130 \uC5C6\uC74C";
+    return `
+      <article>
+        <strong>${formatShortDate(date)}</strong>
+        <span>${detail2}</span>
+      </article>
+    `;
+  }
+  const calculation = calculateDay(dayRecord);
+  const total = calculation.totals.deliveredCount;
+  const detail = total > 0 ? `${total}\uAC1C \xB7 ${formatEff(calculation.totals.efficiencyPerHour)}` : statusLabel(dayRecord.status);
+  return `
+    <article>
+      <strong>${formatShortDate(date)}</strong>
+      <span>${detail}</span>
+    </article>
+  `;
+}
+function renderMissingDateState(date) {
+  if (!isVirtualRegularHoliday(date)) return `<p class="empty-state">${date} \uAE30\uB85D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</p>`;
+  return `
+    <div class="holiday-state">
+      <h3>${formatKoreanDateLabel(date)}</h3>
+      <strong>\uC815\uAE30\uD734\uBB34</strong>
+      <p>\uC800\uC7A5\uB41C \uAE30\uB85D\uC740 \uC5C6\uACE0, \uACFC\uAC70 \uC77C\uC694\uC77C/\uC6D4\uC694\uC77C \uBE48 \uB0A0\uC9DC\uB77C \uD654\uBA74\uC5D0\uC11C\uB9CC \uD734\uBB34\uB85C \uD45C\uC2DC\uD569\uB2C8\uB2E4. \uBC31\uC5C5 JSON\uC5D0\uB294 \uD734\uBB34 \uAE30\uB85D\uC744 \uC0C8\uB85C \uB9CC\uB4E4\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.</p>
+    </div>
   `;
 }
 function renderBackupSettingsTab() {
@@ -2243,11 +2472,14 @@ function getViewportInfoLabel() {
 }
 function buildLogEntries(calculation) {
   if (!currentDay) return [];
+  return buildLogEntriesForDay(currentDay, calculation);
+}
+function buildLogEntriesForDay(dayRecord, calculation) {
   const entries = [];
   const zoneCalcs = new Map(calculation.zones.map((zone) => [zone.zoneId, zone]));
-  const orderedEvents = [...currentDay.timeline].sort(compareLogEventOrder);
+  const orderedEvents = [...dayRecord.timeline].sort(compareLogEventOrder);
   for (const event of orderedEvents) {
-    const zoneName = event.zoneId ? getZoneName2(event.zoneId) : void 0;
+    const zoneName = event.zoneId ? getZoneNameFromDay(dayRecord, event.zoneId) : void 0;
     const zoneCalc = event.zoneId ? zoneCalcs.get(event.zoneId) : void 0;
     const payload = event.payload;
     const time = formatTime(event.at);
@@ -2255,10 +2487,10 @@ function buildLogEntries(calculation) {
       const total = typeof payload?.total === "number" ? `\uC608\uC0C1 \uC218\uB7C9: ${payload.total}\uAC1C` : "\uC608\uC0C1 \uC218\uB7C9 \uC5C6\uC74C";
       entries.push({ title: "\uC9C4\uC811 \uCD9C\uBC1C", time, detail: total, kind: "depart" });
     } else if (event.type === "arrive_cheongnyangni") {
-      entries.push({ title: "\uCCAD\uB7C9\uB9AC \uB3C4\uCC29", time, detail: `\uC6B4\uC804: ${formatMin(getDriveMinutes())}`, kind: "arrive" });
+      entries.push({ title: "\uCCAD\uB7C9\uB9AC \uB3C4\uCC29", time, detail: `\uC6B4\uC804: ${formatMin(getDriveMinutesForDay(dayRecord))}`, kind: "arrive" });
     } else if (event.type === "zone_start") {
-      const detail = event.zoneId === "miju" ? buildMijuStartDetail() : buildMovementDetail(zoneCalc);
-      entries.push({ title: `${getZoneOrderLabel(event.zoneId)} \uC2DC\uC791 \xB7 ${zoneName}`, time, detail, kind: "zone" });
+      const detail = event.zoneId === "miju" ? buildMijuStartDetailForDay(dayRecord) : buildMovementDetail(zoneCalc);
+      entries.push({ title: `${getZoneOrderLabelForDay(dayRecord, event.zoneId)} \uC2DC\uC791 \xB7 ${zoneName}`, time, detail, kind: "zone" });
     } else if (event.type === "delivery_start") {
       entries.push({ title: "\uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791", time, detail: zoneName ? `${zoneName} \uC9C4\uD589 \uC911` : void 0, kind: "zone" });
     } else if (event.type === "sorting_start") {
@@ -2285,10 +2517,9 @@ function buildLogEntries(calculation) {
   }
   return entries;
 }
-function getDriveMinutes() {
-  if (!currentDay) return void 0;
-  const depart = currentDay.timeline.find((event) => event.type === "depart_jinjeop");
-  const arrive = currentDay.timeline.find((event) => event.type === "arrive_cheongnyangni");
+function getDriveMinutesForDay(dayRecord) {
+  const depart = dayRecord.timeline.find((event) => event.type === "depart_jinjeop");
+  const arrive = dayRecord.timeline.find((event) => event.type === "arrive_cheongnyangni");
   return depart?.at && arrive?.at ? diffMinutesFromIso(depart.at, arrive.at) : void 0;
 }
 function compareLogEventOrder(a, b) {
@@ -2331,8 +2562,8 @@ function logEventPriority(event) {
       return 100;
   }
 }
-function buildMijuStartDetail() {
-  const checkpoint = getMijuCheckpoint();
+function buildMijuStartDetailForDay(dayRecord) {
+  const checkpoint = getMijuCheckpointForDay(dayRecord);
   if (!checkpoint || checkpoint.aTotal <= 0) return void 0;
   return `1\uB3D9 ${checkpoint.one} \xB7 2\uB3D9 ${checkpoint.two} \xB7 3\uB3D9 ${checkpoint.three} (A\uD569\uACC4:${checkpoint.aTotal}\uAC1C)`;
 }
@@ -2340,9 +2571,9 @@ function buildMovementDetail(zoneCalc) {
   if (zoneCalc?.movementMinutes === void 0) return void 0;
   return `\uC774\uB3D9: ${formatMin(zoneCalc.movementMinutes)}`;
 }
-function getZoneOrderLabel(zoneId) {
-  if (!currentDay || !zoneId) return "\uAD6C\uC5ED";
-  const zone = currentDay.zones.find((item) => item.id === zoneId);
+function getZoneOrderLabelForDay(dayRecord, zoneId) {
+  if (!zoneId) return "\uAD6C\uC5ED";
+  const zone = dayRecord.zones.find((item) => item.id === zoneId);
   return zone ? `${zone.order}\uAD6C\uC5ED` : "\uAD6C\uC5ED";
 }
 function renderCurrentStep() {
@@ -2656,12 +2887,11 @@ function renderCompletedZoneEditForm(zoneId) {
   `;
 }
 function renderQuantityComparison(title, comparison) {
-  const readableLabel = comparison.buckets.filter((bucket) => bucket.quantity > 0).map((bucket) => `${formatBucketLabel(bucket.key)} ${bucket.percent}%`).join(" / ") || "\uB370\uC774\uD130 \uC5C6\uC74C";
   return `
     <article class="ratio-card">
       <div>
         <strong>${title}</strong>
-        <span>${readableLabel}</span>
+        <span>${comparison.ratioLabel}</span>
       </div>
       <p>\uAE30\uC900: \uBC30\uC1A1 \uC644\uB8CC \uC218\uB7C9 \xB7 \uD569\uACC4 ${comparison.totalQuantity}\uAC1C</p>
       <div class="ratio-bars">
@@ -2679,6 +2909,98 @@ function formatBucketLabel(key) {
   if (key === "miju") return "\uBBF8\uC8FC";
   if (key === "hils") return "\uD790\uC2A4";
   return "\uB300\uCCB4\uBC30\uC1A1\uC9C0";
+}
+function getZoneBucket(dayRecord, zoneId) {
+  if (zoneId === "miju") return "miju";
+  if (zoneId === "hils") return "hils";
+  const name = getZoneNameFromDay(dayRecord, zoneId);
+  return name.includes("\uD790\uC2A4") ? "hils" : "alternate";
+}
+function getZoneNameFromDay(dayRecord, zoneId) {
+  const existing = dayRecord.zones.find((zone) => zone.id === zoneId)?.name;
+  if (existing) return existing;
+  if (zoneId === "miju") return "\uBBF8\uC8FC";
+  if (zoneId === "hils") return "\uD790\uC2A4\uD14C\uC774\uD2B8";
+  if (zoneId.startsWith("alt-")) return "\uB300\uCCB4\uBC30\uC1A1";
+  return "\uCD94\uAC00 \uAD6C\uC5ED";
+}
+function getExpectedTotalForDay(dayRecord) {
+  const depart = dayRecord.timeline.find((event) => event.type === "depart_jinjeop");
+  const payload = depart?.payload;
+  return typeof payload?.total === "number" && payload.total > 0 ? payload.total : void 0;
+}
+function sumDefined2(values) {
+  const defined = values.filter((value) => typeof value === "number");
+  if (defined.length === 0) return void 0;
+  return defined.reduce((sum, value) => sum + value, 0);
+}
+function formatScanMiss(value) {
+  if (value === void 0) return "-";
+  if (value > 0) return `+${value}\uAC1C`;
+  return `${value}\uAC1C`;
+}
+function getWeekRange(offset) {
+  const base = parseDateKey(todayKey());
+  const start = new Date(base);
+  start.setDate(base.getDate() - base.getDay() + offset * 7);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { start, end };
+}
+function getMonthRange(offset) {
+  const base = parseDateKey(todayKey());
+  const start = new Date(base.getFullYear(), base.getMonth() + offset, 1);
+  const end = new Date(base.getFullYear(), base.getMonth() + offset + 1, 0);
+  return { start, end };
+}
+function getHistoryInRange(history, start, end) {
+  const startKey = dateKeyFromDate(start);
+  const endKey = dateKeyFromDate(end);
+  return history.filter((dayRecord) => dayRecord.date >= startKey && dayRecord.date <= endKey);
+}
+function isVirtualRegularHoliday(date) {
+  return date < todayKey() && isRegularOffDate(date);
+}
+function isRegularOffDate(date) {
+  const day = parseDateKey(date).getDay();
+  return day === 0 || day === 1;
+}
+function getDateKeysInRange(start, end) {
+  const dates = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    dates.push(dateKeyFromDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+function parseDateKey(date) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year || 1970, (month || 1) - 1, day || 1);
+}
+function dateKeyFromDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+function formatDateRange(start, end) {
+  return `${formatShortDate(dateKeyFromDate(start))} ~ ${formatShortDate(dateKeyFromDate(end))}`;
+}
+function formatMonthTitle(date) {
+  return `${date.getFullYear()}\uB144 ${date.getMonth() + 1}\uC6D4`;
+}
+function formatKoreanDateLabel(date) {
+  const parsed = parseDateKey(date);
+  return `${parsed.getFullYear()}\uB144 ${parsed.getMonth() + 1}\uC6D4 ${parsed.getDate()}\uC77C ${weekdayLabel(parsed)}`;
+}
+function formatShortDate(date) {
+  const parsed = parseDateKey(date);
+  return `${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")} (${weekdayLabel(parsed, true)})`;
+}
+function weekdayLabel(date, short = false) {
+  const labels = short ? ["\uC77C", "\uC6D4", "\uD654", "\uC218", "\uBAA9", "\uAE08", "\uD1A0"] : ["\uC77C\uC694\uC77C", "\uC6D4\uC694\uC77C", "\uD654\uC694\uC77C", "\uC218\uC694\uC77C", "\uBAA9\uC694\uC77C", "\uAE08\uC694\uC77C", "\uD1A0\uC694\uC77C"];
+  return labels[date.getDay()] ?? "";
 }
 function renderImportFeedback() {
   if (!lastImportFeedback) return "";
@@ -2710,6 +3032,39 @@ async function handleAction(button) {
       activeTab = tab;
       render();
     }
+    return;
+  }
+  if (action === "set-stats-tab") {
+    const tab = button.dataset.statsTab;
+    if (tab && ["week", "month", "date"].includes(tab)) {
+      activeStatsTab = tab;
+      render();
+    }
+    return;
+  }
+  if (action === "stats-week-prev") {
+    statsWeekOffset -= 1;
+    render();
+    return;
+  }
+  if (action === "stats-week-next") {
+    statsWeekOffset = Math.min(0, statsWeekOffset + 1);
+    render();
+    return;
+  }
+  if (action === "stats-month-prev") {
+    statsMonthOffset -= 1;
+    render();
+    return;
+  }
+  if (action === "stats-month-next") {
+    statsMonthOffset = Math.min(0, statsMonthOffset + 1);
+    render();
+    return;
+  }
+  if (action === "stats-date-today") {
+    statsSelectedDate = todayKey();
+    render();
     return;
   }
   if (action === "refresh") {
@@ -3491,7 +3846,10 @@ function getPreviousCompletedZone() {
 }
 function getMijuCheckpoint() {
   if (!currentDay) return void 0;
-  const event = [...currentDay.timeline].reverse().find(
+  return getMijuCheckpointForDay(currentDay);
+}
+function getMijuCheckpointForDay(dayRecord) {
+  const event = [...dayRecord.timeline].reverse().find(
     (candidate) => candidate.type === "manual_adjust" && candidate.zoneId === "miju" && typeof candidate.payload === "object" && candidate.payload && ["miju_a_checkpoint", "miju_a_checkpoint_clear"].includes(
       String(candidate.payload.reason)
     )
@@ -3548,14 +3906,6 @@ function todayKey() {
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
-}
-function getIsoWeekKey2(date) {
-  const parsed = /* @__PURE__ */ new Date(date + "T00:00:00Z");
-  const day = parsed.getUTCDay() || 7;
-  parsed.setUTCDate(parsed.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(parsed.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((parsed.getTime() - yearStart.getTime()) / 864e5 + 1) / 7);
-  return `${parsed.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 function nowIso() {
   return (/* @__PURE__ */ new Date()).toISOString();
@@ -3750,6 +4100,15 @@ function bindNumericLimits() {
       const maxDigits = parseInt(input.dataset.numericLimit ?? "3", 10);
       input.value = input.value.replace(/\D/g, "").slice(0, maxDigits);
     });
+  });
+}
+function bindStatsDateInput() {
+  const input = root.querySelector("#stats-date-input");
+  if (!input) return;
+  input.addEventListener("change", () => {
+    if (!input.value) return;
+    statsSelectedDate = input.value;
+    render();
   });
 }
 function numberOrZero2(value) {
