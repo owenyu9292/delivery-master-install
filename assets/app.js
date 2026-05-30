@@ -770,7 +770,8 @@ function validateZoneQuantity(input) {
       message: `${input.zoneName} \uC218\uB7C9\uC740 1\uAC1C \uC774\uC0C1\uC774\uC5B4\uC57C \uD569\uB2C8\uB2E4.`
     };
   }
-  const looksLikeDayTotal = expectedTotal !== void 0 && completedOther > 0 && input.entered > Math.max(0, expectedTotal - completedOther) && input.entered - completedOther > 0 && input.entered - completedOther <= input.maxReasonable;
+  const dayTotalTolerance = expectedTotal !== void 0 ? Math.max(10, Math.ceil(expectedTotal * 0.1)) : 0;
+  const looksLikeDayTotal = expectedTotal !== void 0 && completedOther > 0 && input.entered >= expectedTotal - dayTotalTolerance && input.entered <= expectedTotal + dayTotalTolerance && input.entered - completedOther > 0 && input.entered - completedOther <= input.maxReasonable;
   if (looksLikeDayTotal) {
     return {
       ok: true,
@@ -1168,7 +1169,7 @@ function classifyZone(dayRecord, zoneId) {
   const zone = dayRecord.zones.find((item) => item.id === zoneId);
   const id = zoneId.toLowerCase();
   const name = (zone?.name || "").toLowerCase();
-  if (id === "miju" || name.includes("\uBBF8\uC8FC")) {
+  if (id === "miju" || id.includes("miju") || name.includes("\uBBF8\uC8FC")) {
     return "miju";
   }
   if (id === "hils" || id.includes("hils") || name.includes("\uD790\uC2A4")) {
@@ -1335,6 +1336,14 @@ function migrateFieldDayItem(item, options) {
     const sortingEndId = result.cuEnd ? eventId(item.date, "sorting-end", order) : void 0;
     const endId = eventId(item.date, "zone-end", order);
     const qty = numberOrZero(result.qty);
+    const mijuA = result.mijuData?.aTotal ?? sumMijuA(result.mijuData);
+    const mijuB = result.mijuData?.bTotal;
+    const mijuPayload = mijuA !== void 0 || mijuB !== void 0 ? {
+      aTotal: numberOrZero(mijuA),
+      bTotal: numberOrZero(mijuB),
+      restTotal: numberOrZero(mijuB),
+      detailMode: true
+    } : {};
     pushEvent(events, {
       id: startId,
       type: "zone_start",
@@ -1344,8 +1353,8 @@ function migrateFieldDayItem(item, options) {
         zoneName: name,
         order,
         sourceType: result.type,
-        mijuA: result.mijuData?.aTotal ?? sumMijuA(result.mijuData),
-        mijuB: result.mijuData?.bTotal
+        mijuA,
+        mijuB
       },
       note: "Migrated from field app zone start"
     });
@@ -1377,7 +1386,8 @@ function migrateFieldDayItem(item, options) {
         delivered: qty,
         failed: 0,
         extra: 0,
-        sourceType: result.type
+        sourceType: result.type,
+        ...mijuPayload
       },
       note: "Migrated from field app zone close"
     });
@@ -1860,17 +1870,18 @@ async function loadHistory(dayStore, summaries) {
 var DEFAULT_DB_NAME = "delivery-master";
 var DEFAULT_STORE_NAME = "dayRecords";
 var DEFAULT_VERSION = 1;
-var APP_VERSION = "0.0.0-prototype";
 var IndexedDbDayStore = class {
   dbName;
   storeName;
   version;
+  appVersion;
   indexedDb;
   dbPromise = null;
   constructor(options = {}) {
     this.dbName = options.dbName ?? DEFAULT_DB_NAME;
     this.storeName = options.storeName ?? DEFAULT_STORE_NAME;
     this.version = options.version ?? DEFAULT_VERSION;
+    this.appVersion = options.appVersion ?? "0.0.0-prototype";
     this.indexedDb = options.indexedDb ?? getBrowserIndexedDb();
   }
   async listDates() {
@@ -1919,7 +1930,7 @@ var IndexedDbDayStore = class {
       app: PHONE_INSTALL_BACKUP_APP,
       backupType: PHONE_INSTALL_BACKUP_TYPE,
       exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      appVersion: APP_VERSION,
+      appVersion: this.appVersion,
       scope,
       days: days.map(cloneDayRecord)
     };
@@ -2025,12 +2036,12 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION2 = "0.2.9-field-log-report";
-var APP_UPDATED_LABEL = "2026-05-29 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v10";
+var APP_VERSION = "0.2.10-field-fold-cover";
+var APP_UPDATED_LABEL = "2026-05-30 \uC218\uC815\uBCF8";
+var CACHE_VERSION = "v11";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
-var SETTINGS_VERSION_LABEL = `${APP_VERSION2} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
+var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
 
 // src/app/main.ts
 var BASE_ZONE_IDS = ["miju", "hils"];
@@ -2047,7 +2058,11 @@ var EVENT_TYPES = [
   "\uB300\uAE30",
   "\uAE30\uD0C0"
 ];
-var store = new IndexedDbDayStore({ dbName: "delivery-master-install", storeName: "dayRecords" });
+var store = new IndexedDbDayStore({
+  dbName: "delivery-master-install",
+  storeName: "dayRecords",
+  appVersion: APP_VERSION
+});
 var currentDay = null;
 var historyDays = [];
 var lastImportFeedback = null;
@@ -2205,6 +2220,10 @@ function renderBackupSettingsTab() {
           <p>${SETTINGS_VERSION_LABEL}</p>
         </article>
         <article>
+          <strong>\uD654\uBA74 \uC815\uBCF4</strong>
+          <p>${getViewportInfoLabel()}</p>
+        </article>
+        <article>
           <strong>\uC790\uB3D9\uC800\uC7A5</strong>
           <p>\uC785\uB825 \uD6C4 IndexedDB\uC5D0 \uC800\uC7A5\uB429\uB2C8\uB2E4. \uC704\uD5D8 \uC791\uC5C5 \uC804\uC5D0\uB294 \uBCC4\uB3C4 \uBC31\uC5C5\uC744 \uB9CC\uB4ED\uB2C8\uB2E4.</p>
         </article>
@@ -2217,11 +2236,16 @@ function renderBackupSettingsTab() {
     </section>
   `;
 }
+function getViewportInfoLabel() {
+  if (typeof window === "undefined") return "\uD655\uC778 \uBD88\uAC00";
+  const dpr = Math.round((window.devicePixelRatio || 1) * 100) / 100;
+  return `${window.innerWidth}x${window.innerHeight} / DPR ${dpr}`;
+}
 function buildLogEntries(calculation) {
   if (!currentDay) return [];
   const entries = [];
   const zoneCalcs = new Map(calculation.zones.map((zone) => [zone.zoneId, zone]));
-  const orderedEvents = [...currentDay.timeline].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const orderedEvents = [...currentDay.timeline].sort(compareLogEventOrder);
   for (const event of orderedEvents) {
     const zoneName = event.zoneId ? getZoneName2(event.zoneId) : void 0;
     const zoneCalc = event.zoneId ? zoneCalcs.get(event.zoneId) : void 0;
@@ -2266,6 +2290,46 @@ function getDriveMinutes() {
   const depart = currentDay.timeline.find((event) => event.type === "depart_jinjeop");
   const arrive = currentDay.timeline.find((event) => event.type === "arrive_cheongnyangni");
   return depart?.at && arrive?.at ? diffMinutesFromIso(depart.at, arrive.at) : void 0;
+}
+function compareLogEventOrder(a, b) {
+  const byMinute = minuteTimestamp(a.at) - minuteTimestamp(b.at);
+  if (byMinute !== 0) return byMinute;
+  const byPriority = logEventPriority(a) - logEventPriority(b);
+  if (byPriority !== 0) return byPriority;
+  const byTime = Date.parse(a.at) - Date.parse(b.at);
+  if (byTime !== 0) return byTime;
+  return a.id.localeCompare(b.id);
+}
+function minuteTimestamp(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 0;
+  date.setSeconds(0, 0);
+  return date.getTime();
+}
+function logEventPriority(event) {
+  switch (event.type) {
+    case "depart_jinjeop":
+      return 10;
+    case "arrive_cheongnyangni":
+      return 20;
+    case "zone_start":
+      return 30;
+    case "sorting_start":
+      return 40;
+    case "sorting_end":
+      return 50;
+    case "delivery_start":
+      return 60;
+    case "incident":
+    case "helper_add":
+      return 70;
+    case "zone_end":
+      return 80;
+    case "day_close":
+      return 90;
+    default:
+      return 100;
+  }
 }
 function buildMijuStartDetail() {
   const checkpoint = getMijuCheckpoint();
@@ -2347,11 +2411,11 @@ function renderZoneStartStep(zone) {
       <p class="step">${zone.order} / ${escapeHtml(zone.name)}</p>
       <h2>${escapeHtml(zone.name)} \uC2DC\uC791</h2>
       <p class="hint">${zone.id === "miju" ? "\uBBF8\uC8FC\uB294 1,2,3\uB3D9\uACFC \uB098\uBA38\uC9C0 \uC218\uB7C9\uC744 \uB098\uB220 \uC785\uB825\uD569\uB2C8\uB2E4." : "\uBC30\uC1A1 \uC218\uB7C9\uACFC \uC815\uB9AC \uC2DC\uC791/\uC644\uB8CC\uB97C \uBD84\uB9AC\uD574\uC11C \uAE30\uB85D\uD569\uB2C8\uB2E4."}</p>
-      ${orderEditor}
       <div class="segmented">
         <button data-action="zone-start" data-zone="${zone.id}">${escapeHtml(zone.name)} \uC2DC\uC791</button>
         ${isExtraZone(zone.id) ? `<button class="secondary" data-action="skip-zone" data-zone="${zone.id}">${escapeHtml(zone.name)} \uC5C6\uC74C</button>` : ""}
       </div>
+      ${orderEditor}
     </section>
   `;
 }
@@ -2452,20 +2516,20 @@ function renderGenericZoneWorkStep(zoneId, options) {
       <p class="step">${options.step}</p>
       <h2>${options.title}</h2>
       ${!sortingStarted && !deliveryStarted ? `
-        <p class="hint">\uC815\uB9AC \uC791\uC5C5\uC774 \uC788\uC73C\uBA74 \uC815\uB9AC \uC2DC\uC791, \uBC14\uB85C \uBC30\uC1A1\uC774\uBA74 \uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791\uC744 \uB204\uB985\uB2C8\uB2E4.</p>
-        <div class="segmented">
+        <div class="field-actions">
           <button data-action="sorting-start" data-zone="${zoneId}">\uC815\uB9AC \uC2DC\uC791</button>
-          <button data-action="delivery-start" data-zone="${zoneId}">\uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791</button>
+          <button class="secondary" data-action="delivery-start" data-zone="${zoneId}">\uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791</button>
         </div>
+        <p class="hint">\uAE30\uBCF8 \uD750\uB984\uC740 \uC815\uB9AC \uC2DC\uC791\uC785\uB2C8\uB2E4. \uC815\uB9AC \uC5C6\uC774 \uBC14\uB85C \uBC30\uC1A1\uD560 \uB54C\uB9CC \uBCF4\uC870 \uBC84\uD2BC\uC744 \uB204\uB985\uB2C8\uB2E4.</p>
       ` : ""}
       ${sortingStarted && !sortingEnded ? `
-        <p class="hint">\uC815\uB9AC\uAC00 \uB05D\uB098\uBA74 \uBC30\uC1A1 \uC218\uB7C9 \uC785\uB825 \uB2E8\uACC4\uB85C \uB118\uC5B4\uAC11\uB2C8\uB2E4.</p>
         <button data-action="sorting-end" data-zone="${zoneId}">\uC815\uB9AC \uC644\uB8CC</button>
+        <p class="hint">\uC815\uB9AC\uAC00 \uB05D\uB098\uBA74 \uBC14\uB85C \uC815\uB9AC \uC644\uB8CC\uB97C \uB204\uB974\uACE0 \uC218\uB7C9 \uC785\uB825\uC73C\uB85C \uB118\uC5B4\uAC11\uB2C8\uB2E4.</p>
       ` : ""}
       ${isReadyForCount ? `
         <label>\uC804\uCCB4 \uC218\uB7C9<input id="${options.countInputId}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="\uC608: 560"></label>
-        <p class="hint">\uB4A4 \uAD6C\uC5ED\uC5D0\uC11C\uB294 \uB2F9\uC77C \uC804\uCCB4 \uC218\uB7C9\uC744 \uB123\uC5B4\uB3C4 \uB429\uB2C8\uB2E4. \uC774\uC804 \uC644\uB8CC \uC218\uB7C9\uC740 \uC571\uC774 \uC790\uB3D9\uC73C\uB85C \uBE8D\uB2C8\uB2E4.</p>
         <button data-action="zone-end" data-zone="${zoneId}">${options.endLabel}</button>
+        <p class="hint">\uB4A4 \uAD6C\uC5ED\uC5D0\uC11C\uB294 \uB2F9\uC77C \uC804\uCCB4 \uC218\uB7C9\uC744 \uB123\uC5B4\uB3C4 \uB429\uB2C8\uB2E4. \uC774\uC804 \uC644\uB8CC \uC218\uB7C9\uC740 \uC571\uC774 \uC790\uB3D9\uC73C\uB85C \uBE8D\uB2C8\uB2E4.</p>
       ` : ""}
     </section>
   `;
@@ -2567,20 +2631,20 @@ function renderCompletedZoneEditForm(zoneId) {
       <summary>\uC644\uB8CC \uAE30\uB85D \uC218\uC815</summary>
       <p class="edit-summary">${quantitySummary}</p>
       <div class="form-grid edit-time-grid">
-        <label>\uC2DC\uC791<input id="edit-${zoneId}-start" type="datetime-local" value="${formatIsoForInput(start?.at)}"></label>
-        <label>\uC885\uB8CC<input id="edit-${zoneId}-end" type="datetime-local" value="${formatIsoForInput(end?.at)}"></label>
+        <label>\uC2DC\uC791 \uC2DC\uAC04<input id="edit-${zoneId}-start" type="time" value="${formatIsoForTimeInput(start?.at)}"></label>
+        <label>\uC885\uB8CC \uC2DC\uAC04<input id="edit-${zoneId}-end" type="time" value="${formatIsoForTimeInput(end?.at)}"></label>
       </div>
-      <div class="form-grid edit-count-grid">
+      <div class="form-grid edit-count-grid ${zoneId === "miju" ? "miju-edit-grid" : "generic-edit-grid"}">
         ${zoneId === "miju" ? `
             <label>1\uB3D9<input id="edit-${zoneId}-1" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${one || ""}"></label>
             <label>2\uB3D9<input id="edit-${zoneId}-2" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${two || ""}"></label>
             <label>3\uB3D9<input id="edit-${zoneId}-3" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${three || ""}"></label>
-            <label>\uBBF8\uC8FC \uC804\uCCB4<input id="edit-${zoneId}-total" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}"></label>
-            <label>\uB098\uBA38\uC9C0<input value="${bTotal || ""}" readonly></label>
+            <label class="edit-miju-total">\uBBF8\uC8FC \uC804\uCCB4<input id="edit-${zoneId}-total" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}"></label>
+            <label class="edit-miju-rest">\uB098\uBA38\uC9C0<input value="${bTotal || ""}" readonly></label>
           ` : `
-            <label>\uBC30\uC1A1 \uC218\uB7C9<input id="edit-${zoneId}-delivered" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}"></label>
-            <label>\uC815\uB9AC \uC2DC\uC791<input id="edit-${zoneId}-sorting-start" type="datetime-local" value="${formatIsoForInput(sortingStart?.at)}"></label>
-            <label>\uC815\uB9AC \uC644\uB8CC<input id="edit-${zoneId}-sorting-end" type="datetime-local" value="${formatIsoForInput(sortingEnd?.at)}"></label>
+            <label class="edit-delivered">\uBC30\uC1A1 \uC218\uB7C9<input id="edit-${zoneId}-delivered" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}"></label>
+            <label>\uC815\uB9AC \uC2DC\uC791<input id="edit-${zoneId}-sorting-start" type="time" value="${formatIsoForTimeInput(sortingStart?.at)}"></label>
+            <label>\uC815\uB9AC \uC644\uB8CC<input id="edit-${zoneId}-sorting-end" type="time" value="${formatIsoForTimeInput(sortingEnd?.at)}"></label>
           `}
       </div>
       <div class="form-grid edit-extra-grid">
@@ -2671,7 +2735,7 @@ async function handleAction(button) {
   }
   if (action === "reset-confirm") {
     if (!confirm("\uC624\uB298 \uAE30\uB85D\uC744 \uCD08\uAE30\uD654\uD560\uAE4C\uC694? \uBA3C\uC800 \uC2A4\uB0C5\uC0F7\uC744 \uB9CC\uB4E0 \uB4A4 \uC9C4\uD589\uD569\uB2C8\uB2E4.")) return;
-    await preparePhoneInstallUpdate(store, { kind: "date", date: currentDay.date });
+    await downloadPreparedSnapshot("reset-before", { kind: "date", date: currentDay.date });
     currentDay = createEmptyDay(currentDay.date);
     await store.saveDay(currentDay);
     await refreshHistory();
@@ -2762,7 +2826,10 @@ async function handleAction(button) {
     return;
   }
   if (action === "depart") addDepartEvent();
-  if (action === "arrive") addEvent("arrive_cheongnyangni");
+  if (action === "arrive") {
+    addEvent("arrive_cheongnyangni");
+    if (currentDay && !isUnpaidHelperDay(currentDay)) ensureDefaultWorkOrder();
+  }
   if (action === "zone-start" && zoneId) addZoneStart(zoneId);
   if (action === "sorting-start" && zoneId) addZoneEvent("sorting_start", zoneId);
   if (action === "sorting-end" && zoneId) addZoneEvent("sorting_end", zoneId);
@@ -2772,19 +2839,30 @@ async function handleAction(button) {
     const closeAt = nowIso();
     addUnpaidHelperEvent(closeAt);
     addEvent("day_close", void 0, closeAt);
+    await saveAndRender();
+    await downloadFullBackup(PHONE_INSTALL_BACKUP_FILENAME);
+    toast("\uC5C5\uBB34 \uC885\uB8CC \uC800\uC7A5 \uC644\uB8CC. \uC804\uCCB4 \uBC31\uC5C5 \uB0B4\uBCF4\uB0B4\uAE30\uB97C \uC2DC\uC791\uD588\uC2B5\uB2C8\uB2E4.");
+    return;
   }
   if (action === "close-day") {
     const closeAt = isUnpaidHelperDay(currentDay) ? readHelperCloseAt() : nowIso();
     if (isUnpaidHelperDay(currentDay)) addUnpaidHelperEvent(closeAt);
     addEvent("day_close", void 0, closeAt);
     await saveAndRender();
-    toast("\uC5C5\uBB34 \uC885\uB8CC \uC800\uC7A5 \uC644\uB8CC. \uBC31\uC5C5 \uB0B4\uBCF4\uB0B4\uAE30\uB3C4 \uAC00\uB2A5\uD569\uB2C8\uB2E4.");
+    await downloadFullBackup(PHONE_INSTALL_BACKUP_FILENAME);
+    toast("\uC5C5\uBB34 \uC885\uB8CC \uC800\uC7A5 \uC644\uB8CC. \uC804\uCCB4 \uBC31\uC5C5 \uB0B4\uBCF4\uB0B4\uAE30\uB97C \uC2DC\uC791\uD588\uC2B5\uB2C8\uB2E4.");
     return;
   }
   await saveAndRender();
 }
 function addDepartEvent() {
-  const expected = readNumber("#expected-count");
+  const expectedInput = readLimitedNumberField("#expected-count", 4);
+  if (!expectedInput.hasValue) {
+    toast("\uC608\uC0C1 \uC218\uB7C9\uC744 \uC785\uB825\uD574\uC57C \uCD9C\uBC1C\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uBB34\uBCF4\uC218 \uB3C4\uC6B0\uBBF8\uB0A0\uC774\uBA74 0\uC744 \uC9C1\uC811 \uC785\uB825\uD558\uC138\uC694.");
+    return;
+  }
+  const expected = expectedInput.value;
+  if (expected === 0 && !confirm("\uC608\uC0C1 \uC218\uB7C9 0\uAC1C\uC785\uB2C8\uB2E4. \uBB34\uBCF4\uC218 \uB3C4\uC6B0\uBBF8\uB0A0\uB85C \uC2DC\uC791\uD560\uAE4C\uC694?")) return;
   if (!confirmLargeNumber(expected, MAX_REASONABLE_EXPECTED, "\uC608\uC0C1 \uC218\uB7C9")) return;
   addEvent("depart_jinjeop", { total: expected, helperDay: expected === 0 });
 }
@@ -2939,7 +3017,7 @@ function clearMijuCheckpoint() {
   toast("A\uAD6C\uAC04 \uC800\uC7A5\uAC12\uC744 \uCD08\uAE30\uD654\uD588\uC2B5\uB2C8\uB2E4.");
 }
 function addZoneEvent(type, zoneId) {
-  if (!currentDay) return;
+  if (!currentDay || hasZoneEvent(zoneId, type)) return;
   ensureZone(zoneId);
   currentDay = createEvent(currentDay, { type, at: resolveZoneEventAt(type, zoneId), zoneId });
   linkLatestEvent(zoneId, type, type === "sorting_start" ? "sortingStartEventId" : "sortingEndEventId");
@@ -3021,13 +3099,26 @@ async function saveCompletedZoneEdit(zoneId) {
   const hasValue = editParts ? editParts.totalHasValue || editParts.hasDetail : Boolean(deliveredInput?.hasValue);
   const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
   if (delivered === void 0) return;
-  await preparePhoneInstallUpdate(store, { kind: "date", date: currentDay.date });
+  const start = latestZoneEvent(zoneId, "zone_start");
+  const end = latestZoneEvent(zoneId, "zone_end");
+  const sortingStart = latestZoneEvent(zoneId, "sorting_start");
+  const sortingEnd = latestZoneEvent(zoneId, "sorting_end");
+  const startAt = readOptionalTimeInput(`#edit-${zoneId}-start`, start?.at);
+  const endAt = readOptionalTimeInput(`#edit-${zoneId}-end`, end?.at);
+  const sortingStartAt = readOptionalTimeInput(`#edit-${zoneId}-sorting-start`, sortingStart?.at);
+  const sortingEndAt = readOptionalTimeInput(`#edit-${zoneId}-sorting-end`, sortingEnd?.at);
+  const timeError = validateZoneEditTimes(zoneId, { startAt, endAt, sortingStartAt, sortingEndAt });
+  if (timeError) {
+    toast(timeError);
+    return;
+  }
+  await downloadPreparedSnapshot("zone-edit-before", { kind: "date", date: currentDay.date });
   currentDay = applyCompletedZoneEdit(currentDay, {
     zoneId,
-    startAt: readOptionalTimeInput(`#edit-${zoneId}-start`),
-    endAt: readOptionalTimeInput(`#edit-${zoneId}-end`),
-    sortingStartAt: readOptionalTimeInput(`#edit-${zoneId}-sorting-start`),
-    sortingEndAt: readOptionalTimeInput(`#edit-${zoneId}-sorting-end`),
+    startAt,
+    endAt,
+    sortingStartAt,
+    sortingEndAt,
     delivered,
     failed: readLimitedNumber(`#edit-${zoneId}-failed`, 3),
     extra: readLimitedNumber(`#edit-${zoneId}-extra`, 3),
@@ -3039,6 +3130,43 @@ async function saveCompletedZoneEdit(zoneId) {
   });
   toast("\uC644\uB8CC \uAD6C\uC5ED \uC218\uC815\uC774 \uC800\uC7A5\uB410\uC2B5\uB2C8\uB2E4.");
   await saveAndRender();
+}
+function validateZoneEditTimes(zoneId, input) {
+  if (isAfter(input.startAt, input.endAt)) return "\uAD6C\uC5ED \uC2DC\uC791 \uC2DC\uAC01\uC774 \uC885\uB8CC \uC2DC\uAC01\uBCF4\uB2E4 \uB2A6\uC2B5\uB2C8\uB2E4.";
+  if (isAfter(input.sortingStartAt, input.sortingEndAt)) return "\uC815\uB9AC \uC2DC\uC791 \uC2DC\uAC01\uC774 \uC815\uB9AC \uC644\uB8CC \uC2DC\uAC01\uBCF4\uB2E4 \uB2A6\uC2B5\uB2C8\uB2E4.";
+  if (isAfter(input.startAt, input.sortingStartAt)) return "\uC815\uB9AC \uC2DC\uC791 \uC2DC\uAC01\uC774 \uAD6C\uC5ED \uC2DC\uC791\uBCF4\uB2E4 \uBE60\uB97C \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.";
+  if (isAfter(input.sortingEndAt, input.endAt)) return "\uC815\uB9AC \uC644\uB8CC \uC2DC\uAC01\uC774 \uAD6C\uC5ED \uC885\uB8CC\uBCF4\uB2E4 \uB2A6\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.";
+  const arrive = currentDay?.timeline.find((event) => event.type === "arrive_cheongnyangni");
+  if (isBefore(input.startAt, arrive?.at)) return "\uAD6C\uC5ED \uC2DC\uC791\uC740 \uCCAD\uB7C9\uB9AC \uB3C4\uCC29\uBCF4\uB2E4 \uBE60\uB97C \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.";
+  const previousEndAt = getPreviousZoneEndAt(zoneId);
+  if (isBefore(input.startAt, previousEndAt)) return "\uAD6C\uC5ED \uC2DC\uC791\uC740 \uC774\uC804 \uAD6C\uC5ED \uC644\uB8CC\uBCF4\uB2E4 \uBE60\uB97C \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.";
+  const nextStartAt = getNextZoneStartAt(zoneId);
+  if (isAfter(input.endAt, nextStartAt)) return "\uAD6C\uC5ED \uC885\uB8CC\uB294 \uB2E4\uC74C \uAD6C\uC5ED \uC2DC\uC791\uBCF4\uB2E4 \uB2A6\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.";
+  const dayClose = currentDay?.timeline.find((event) => event.type === "day_close");
+  if (isAfter(input.endAt, dayClose?.at)) return "\uAD6C\uC5ED \uC885\uB8CC\uB294 \uC5C5\uBB34 \uC885\uB8CC\uBCF4\uB2E4 \uB2A6\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.";
+  return void 0;
+}
+function isAfter(left, right) {
+  if (!left || !right) return false;
+  return new Date(left).getTime() > new Date(right).getTime();
+}
+function isBefore(left, right) {
+  if (!left || !right) return false;
+  return new Date(left).getTime() < new Date(right).getTime();
+}
+function getPreviousZoneEndAt(zoneId) {
+  if (!currentDay) return void 0;
+  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
+  if (!zone) return void 0;
+  const previousZone = [...currentDay.zones].filter((candidate) => candidate.order < zone.order).sort((a, b) => b.order - a.order)[0];
+  return previousZone ? latestZoneEvent(previousZone.id, "zone_end")?.at : void 0;
+}
+function getNextZoneStartAt(zoneId) {
+  if (!currentDay) return void 0;
+  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
+  if (!zone) return void 0;
+  const nextZone = [...currentDay.zones].filter((candidate) => candidate.order > zone.order).sort((a, b) => a.order - b.order)[0];
+  return nextZone ? latestZoneEvent(nextZone.id, "zone_start")?.at : void 0;
 }
 function removeMissingCleanup(zoneId) {
   if (!currentDay || !zoneId) return;
@@ -3117,13 +3245,6 @@ function resolveZoneEventAt(type, zoneId) {
   const diffMinutes3 = (Date.now() - previousEnd.getTime()) / 6e4;
   return diffMinutes3 < 1 ? addMinutes(previousEndAt, 5) : nowIso();
 }
-function getPreviousZoneEndAt(zoneId) {
-  if (!currentDay) return void 0;
-  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
-  if (!zone) return void 0;
-  const previousZone = [...currentDay.zones].filter((candidate) => candidate.order < zone.order).sort((a, b) => b.order - a.order)[0];
-  return previousZone ? latestZoneEvent(previousZone.id, "zone_end")?.at : void 0;
-}
 function addMinutes(iso, minutes) {
   return new Date(Date.parse(iso) + minutes * 6e4).toISOString();
 }
@@ -3145,7 +3266,7 @@ async function importFieldBackupFile() {
   if (!file) return;
   try {
     const data = await readJsonFile(file);
-    const migration = buildFieldAppMigrationBackup(data, { appVersion: APP_VERSION2 });
+    const migration = buildFieldAppMigrationBackup(data, { appVersion: APP_VERSION });
     const recognizedDays = migration.backup.days.length;
     if (recognizedDays === 0) {
       lastImportFeedback = {
@@ -3267,6 +3388,14 @@ function downloadJsonFile(value, filename) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+async function downloadFullBackup(filename) {
+  const backup = await store.createBackup({ kind: "all" });
+  downloadJsonFile(backup, filename);
+}
+async function downloadPreparedSnapshot(label, scope = { kind: "all" }) {
+  const plan = await preparePhoneInstallUpdate(store, scope);
+  downloadJsonFile(plan.snapshot, buildBackupFilename(label));
+}
 function buildBackupFilename(label) {
   const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
   return PHONE_INSTALL_BACKUP_FILENAME.replace(/\.json$/i, `_${label}_${stamp}.json`);
@@ -3311,7 +3440,7 @@ function createEmptyDay(date) {
     meta: {
       createdAt: now,
       updatedAt: now,
-      appVersion: APP_VERSION2,
+      appVersion: APP_VERSION,
       recoveryStatus: "none"
     }
   };
@@ -3437,16 +3566,35 @@ function readHelperCloseAt() {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? nowIso() : parsed.toISOString();
 }
-function readOptionalTimeInput(selector) {
+function readOptionalTimeInput(selector, existingIso) {
   const value = document.querySelector(selector)?.value;
   if (!value) return void 0;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? void 0 : parsed.toISOString();
+  if (value.includes("T")) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? void 0 : parsed.toISOString();
+  }
+  return mergeCurrentDateAndTime(value, existingIso);
 }
-function formatIsoForInput(iso) {
+function mergeCurrentDateAndTime(value, existingIso) {
+  if (!currentDay) return void 0;
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return void 0;
+  const existing = existingIso ? new Date(existingIso) : void 0;
+  if (existing && !Number.isNaN(existing.getTime()) && formatTimeOnlyValue(existing) === value) {
+    return existingIso;
+  }
+  const [year, month, day] = currentDay.date.split("-").map(Number);
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!year || !month || !day || hour > 23 || minute > 59) return void 0;
+  const second = existing && !Number.isNaN(existing.getTime()) ? existing.getSeconds() : 0;
+  const millisecond = existing && !Number.isNaN(existing.getTime()) ? existing.getMilliseconds() : 0;
+  return new Date(year, month - 1, day, hour, minute, second, millisecond).toISOString();
+}
+function formatIsoForTimeInput(iso) {
   if (!iso) return "";
   const parsed = new Date(iso);
-  return Number.isNaN(parsed.getTime()) ? "" : formatTimeInputValue(parsed);
+  return Number.isNaN(parsed.getTime()) ? "" : formatTimeOnlyValue(parsed);
 }
 function formatTimeInputValue(date) {
   const y = date.getFullYear();
@@ -3455,6 +3603,11 @@ function formatTimeInputValue(date) {
   const hh = String(date.getHours()).padStart(2, "0");
   const mm = String(date.getMinutes()).padStart(2, "0");
   return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+function formatTimeOnlyValue(date) {
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 function readZoneDelivered(zoneId) {
   if (zoneId === "miju") {
@@ -3638,8 +3791,11 @@ function toast(message) {
   setTimeout(() => el.remove(), 1800);
 }
 async function registerServiceWorker() {
-  if ("serviceWorker" in navigator) {
+  if (!("serviceWorker" in navigator)) return;
+  try {
     await navigator.serviceWorker.register("./sw.js");
+  } catch (error) {
+    console.warn("Service worker registration failed; app boot continues.", error);
   }
 }
 //# sourceMappingURL=app.js.map

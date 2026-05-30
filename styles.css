@@ -35,6 +35,12 @@ button.danger {
   background: #b91c1c;
 }
 
+button.secondary {
+  border: 1px solid #cbd5e1;
+  background: #e2e8f0;
+  color: #111827;
+}
+
 .shell {
   width: min(720px, 100%);
   margin: 0 auto;
@@ -160,6 +166,13 @@ button.danger {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.field-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .extra-zone-form {
   margin-top: 12px;
 }
@@ -180,6 +193,7 @@ label {
 input,
 select {
   width: 100%;
+  min-width: 0;
   min-height: 46px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
@@ -275,6 +289,34 @@ select {
 .edit-extra-grid,
 .event-grid {
   align-items: end;
+}
+
+.zone-edit label {
+  min-width: 0;
+}
+
+.zone-edit input[type="time"] {
+  padding: 0 8px;
+}
+
+.edit-time-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.miju-edit-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.miju-edit-grid .edit-miju-total {
+  grid-column: span 2;
+}
+
+.generic-edit-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.generic-edit-grid .edit-delivered {
+  grid-column: 1 / -1;
 }
 
 .edit-extra-grid {
@@ -602,6 +644,16 @@ select {
   }
 
   .form-grid.compact-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .zone-edit .edit-time-grid,
+  .zone-edit .generic-edit-grid,
+  .zone-edit .edit-extra-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .zone-edit .miju-edit-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
