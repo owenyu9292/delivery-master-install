@@ -2525,11 +2525,18 @@ function getDriveMinutesForDay(dayRecord) {
 function compareLogEventOrder(a, b) {
   const byMinute = minuteTimestamp(a.at) - minuteTimestamp(b.at);
   if (byMinute !== 0) return byMinute;
+  const byAdjacentZoneFlow = adjacentZoneFlowPriority(a) - adjacentZoneFlowPriority(b);
+  if (byAdjacentZoneFlow !== 0) return byAdjacentZoneFlow;
   const byPriority = logEventPriority(a) - logEventPriority(b);
   if (byPriority !== 0) return byPriority;
   const byTime = Date.parse(a.at) - Date.parse(b.at);
   if (byTime !== 0) return byTime;
   return a.id.localeCompare(b.id);
+}
+function adjacentZoneFlowPriority(event) {
+  if (event.type === "zone_end") return 0;
+  if (event.type === "zone_start") return 1;
+  return 0;
 }
 function minuteTimestamp(iso) {
   const date = new Date(iso);
