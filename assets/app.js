@@ -1997,9 +1997,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.10-field-fold-cover";
-var APP_UPDATED_LABEL = "2026-05-30 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v11";
+var APP_VERSION = "0.2.11-field-final-polish";
+var APP_UPDATED_LABEL = "2026-06-06 \uC218\uC815\uBCF8";
+var CACHE_VERSION = "v12";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -2115,8 +2115,8 @@ function renderActiveTabContent(calculation, report, history, pendingZone) {
 }
 function renderWorkTab(calculation, pendingZone) {
   return `
-    ${pendingZone ? renderCleanupCorrectionPanel(pendingZone.id) : ""}
     ${renderCurrentStep()}
+    ${pendingZone ? renderCleanupCorrectionPanel(pendingZone.id) : ""}
     ${renderEventPanel()}
     <section class="panel">
       <h2>\uC624\uB298 \uC694\uC57D</h2>
@@ -2309,7 +2309,7 @@ function buildQuantityComparisonFromPairs(pairs) {
   return {
     basis: "deliveredCount",
     totalQuantity,
-    ratioLabel: totalQuantity > 0 ? `${quantities.miju}:${quantities.hils}:${quantities.alternate}` : "\uB370\uC774\uD130 \uC5C6\uC74C",
+    ratioLabel: totalQuantity > 0 ? buckets.map((bucket) => `${formatBucketShortLabel(bucket.key)}${Math.round(bucket.percent)}`).join(":") : "\uB370\uC774\uD130 \uC5C6\uC74C",
     buckets
   };
 }
@@ -2916,6 +2916,11 @@ function formatBucketLabel(key) {
   if (key === "miju") return "\uBBF8\uC8FC";
   if (key === "hils") return "\uD790\uC2A4";
   return "\uB300\uCCB4\uBC30\uC1A1\uC9C0";
+}
+function formatBucketShortLabel(key) {
+  if (key === "miju") return "\uBBF8";
+  if (key === "hils") return "\uD790";
+  return "\uB300";
 }
 function getZoneBucket(dayRecord, zoneId) {
   if (zoneId === "miju") return "miju";
