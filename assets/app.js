@@ -1997,9 +1997,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.11-field-final-polish";
-var APP_UPDATED_LABEL = "2026-06-06 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v12";
+var APP_VERSION = "0.2.12-direct-delivery-hotfix";
+var APP_UPDATED_LABEL = "2026-06-07 \uC218\uC815\uBCF8";
+var CACHE_VERSION = "v13";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -3402,8 +3402,8 @@ async function addZoneEnd(zoneId) {
     toast("\uC815\uB9AC \uC2DC\uC791 \uB610\uB294 \uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791\uC744 \uBA3C\uC800 \uC120\uD0DD\uD558\uC138\uC694.");
     return;
   }
-  if (zoneId !== "miju" && !hasZoneEvent(zoneId, "sorting_end")) {
-    if (hasZoneEvent(zoneId, "sorting_start")) toast("\uC815\uB9AC \uC644\uB8CC\uB97C \uBA3C\uC800 \uAE30\uB85D\uD574\uC57C \uD569\uB2C8\uB2E4.");
+  if (zoneId !== "miju" && hasZoneEvent(zoneId, "sorting_start") && !hasZoneEvent(zoneId, "sorting_end")) {
+    toast("\uC815\uB9AC \uC644\uB8CC\uB97C \uBA3C\uC800 \uAE30\uB85D\uD574\uC57C \uD569\uB2C8\uB2E4.");
     return;
   }
   const mijuParts = zoneId === "miju" ? readMijuPayloadParts() : void 0;
