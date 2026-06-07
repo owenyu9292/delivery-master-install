@@ -8,8 +8,10 @@ import type { DayCalculation, DayRecord, HelperRecord, ReportResult, TimelineEve
 import { buildPhoneInstallDashboard, preparePhoneInstallUpdate } from "../install/phoneInstall";
 import {
   PHONE_INSTALL_BACKUP_FILENAME,
+  assertPhoneInstallBackup,
   buildFieldAppMigrationBackup,
   createBackupCopyDay,
+  normalizePhoneInstallBackup,
 } from "../storage/backupImportExport";
 import { IndexedDbDayStore } from "../storage/indexedDbAdapter";
 import type { ZoneQuantityComparison } from "../ui/uiScreens";
@@ -49,6 +51,7 @@ type AppTab = "work" | "log" | "report" | "stats" | "backup";
 type StatsTab = "week" | "month" | "date";
 
 interface ImportFeedback {
+  title?: string;
   fileName: string;
   recognizedDays: number;
   importedCount: number;
@@ -597,6 +600,7 @@ function renderBackupSettingsTab(): string {
       <div class="row-actions">
         <button data-action="snapshot">백업 내보내기</button>
         <button data-action="import-field-backup">현장앱 백업 가져오기</button>
+        <button data-action="import-phone-backup">개발앱 백업 복구</button>
         <button class="danger" data-action="reset-confirm">${resetLabel}</button>
       </div>
       ${renderRecordCorrectionPanel()}
@@ -1524,7 +1528,7 @@ function renderImportFeedback(): string {
 
   return `
     <aside class="import-result">
-      <strong>현장앱 백업 가져오기 결과</strong>
+      <strong>${escapeHtml(lastImportFeedback.title ?? "백업 가져오기 결과")}</strong>
       <p>${escapeHtml(lastImportFeedback.message)}</p>
       <ul>
         <li>파일: ${escapeHtml(lastImportFeedback.fileName)}</li>
@@ -1623,6 +1627,10 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   }
   if (action === "import-field-backup") {
     await importFieldBackupFile();
+    return;
+  }
+  if (action === "import-phone-backup") {
+    await importPhoneInstallBackupFile();
     return;
   }
   if (action === "reset-confirm") {
@@ -2747,6 +2755,109 @@ async function importFieldBackupFile(): Promise<void> {
     };
     render();
     toast(error instanceof Error ? error.message : "현장앱 백업 가져오기 실패");
+  }
+}
+
+async function importPhoneInstallBackupFile(): Promise<void> {
+  const file = await pickJsonFile();
+  if (!file) return;
+
+  try {
+    const data = await readJsonFile(file);
+    assertPhoneInstallBackup(data);
+    const backup = normalizePhoneInstallBackup(data);
+    const recognizedDays = backup.days.length;
+    if (recognizedDays === 0) {
+      lastImportFeedback = {
+        title: "개발앱 백업 복구 결과",
+        fileName: file.name,
+        recognizedDays,
+        importedCount: 0,
+        skippedCount: 0,
+        importedDates: [],
+        skippedDates: [],
+        message: "개발앱 백업에서 복구할 날짜를 찾지 못했습니다.",
+        snapshotCreated: false,
+        backupExported: false,
+      };
+      render();
+      return;
+    }
+
+    const existingDates: string[] = [];
+    for (const day of backup.days) {
+      if (await store.getDay(day.date)) existingDates.push(day.date);
+    }
+    const dates = backup.days.map((day) => day.date).join(", ");
+    const ok = confirm(
+      `개발앱 백업에서 ${recognizedDays}일치를 찾았습니다.\n\n${dates}\n\n복구 전에 전체 백업 파일을 내보냅니다.`,
+    );
+    if (!ok) {
+      lastImportFeedback = {
+        title: "개발앱 백업 복구 결과",
+        fileName: file.name,
+        recognizedDays,
+        importedCount: 0,
+        skippedCount: 0,
+        importedDates: [],
+        skippedDates: [],
+        message: "사용자가 복구를 취소했습니다.",
+        snapshotCreated: false,
+        backupExported: false,
+      };
+      render();
+      return;
+    }
+
+    const overwrite = existingDates.length > 0
+      ? confirm(
+        `이미 있는 날짜가 있습니다.\n\n${existingDates.join(", ")}\n\n확인: 기존 날짜 덮어쓰기\n취소: 복사본으로 가져오기`,
+      )
+      : false;
+    const mode = overwrite ? "overwrite" : "copy";
+
+    const beforeBackup = await store.createBackup({ kind: "all" });
+    downloadJsonFile(beforeBackup, buildBackupFilename(`before-phone-${mode}`));
+
+    const result = await store.importBackup(backup, { mode });
+    await refreshHistory();
+    currentDay = await pickDayToDisplayAfterImport(result.imported.map((item) => item.date)) ?? currentDay;
+
+    const afterBackup = await store.createBackup({ kind: "all" });
+    downloadJsonFile(afterBackup, buildBackupFilename(`after-phone-${mode}`));
+
+    lastImportFeedback = {
+      title: "개발앱 백업 복구 결과",
+      fileName: file.name,
+      recognizedDays,
+      importedCount: result.imported.length,
+      skippedCount: result.skipped.length,
+      importedDates: result.imported.map((item) => item.date),
+      skippedDates: result.skipped.map((item) => `${item.date}: ${item.reason}`),
+      message: mode === "overwrite"
+        ? "개발앱 백업을 기존 날짜에 덮어써 복구했습니다."
+        : "개발앱 백업을 복사본 우선으로 가져왔습니다.",
+      snapshotCreated: true,
+      backupExported: true,
+      activeDate: currentDay?.date,
+    };
+    toast(`개발앱 백업 복구 완료: ${result.imported.length}일`);
+    render();
+  } catch (error) {
+    lastImportFeedback = {
+      title: "개발앱 백업 복구 결과",
+      fileName: file.name,
+      recognizedDays: 0,
+      importedCount: 0,
+      skippedCount: 0,
+      importedDates: [],
+      skippedDates: [],
+      message: error instanceof Error ? error.message : "개발앱 백업 복구 실패",
+      snapshotCreated: false,
+      backupExported: false,
+    };
+    render();
+    toast(error instanceof Error ? error.message : "개발앱 백업 복구 실패");
   }
 }
 

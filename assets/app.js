@@ -1725,6 +1725,13 @@ function buildFieldAppMigrationBackup(source, options = {}) {
     report: buildMigrationReport(migration)
   };
 }
+function normalizePhoneInstallBackup(file) {
+  return {
+    ...file,
+    app: PHONE_INSTALL_BACKUP_APP,
+    backupType: PHONE_INSTALL_BACKUP_TYPE
+  };
+}
 function assertPhoneInstallBackup(file) {
   const candidate = file;
   if (candidate.app === FIELD_APP_BACKUP_APP) {
@@ -2026,9 +2033,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.17-cumulative-correction-helper";
+var APP_VERSION = "0.2.18-phone-backup-restore";
 var APP_UPDATED_LABEL = "2026-06-08 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v18";
+var CACHE_VERSION = "v19";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -2491,6 +2498,7 @@ function renderBackupSettingsTab() {
       <div class="row-actions">
         <button data-action="snapshot">\uBC31\uC5C5 \uB0B4\uBCF4\uB0B4\uAE30</button>
         <button data-action="import-field-backup">\uD604\uC7A5\uC571 \uBC31\uC5C5 \uAC00\uC838\uC624\uAE30</button>
+        <button data-action="import-phone-backup">\uAC1C\uBC1C\uC571 \uBC31\uC5C5 \uBCF5\uAD6C</button>
         <button class="danger" data-action="reset-confirm">${resetLabel}</button>
       </div>
       ${renderRecordCorrectionPanel()}
@@ -3275,7 +3283,7 @@ function renderImportFeedback() {
   const skipped = lastImportFeedback.skippedDates.length > 0 ? lastImportFeedback.skippedDates.join(", ") : "\uC5C6\uC74C";
   return `
     <aside class="import-result">
-      <strong>\uD604\uC7A5\uC571 \uBC31\uC5C5 \uAC00\uC838\uC624\uAE30 \uACB0\uACFC</strong>
+      <strong>${escapeHtml(lastImportFeedback.title ?? "\uBC31\uC5C5 \uAC00\uC838\uC624\uAE30 \uACB0\uACFC")}</strong>
       <p>${escapeHtml(lastImportFeedback.message)}</p>
       <ul>
         <li>\uD30C\uC77C: ${escapeHtml(lastImportFeedback.fileName)}</li>
@@ -3364,6 +3372,10 @@ async function handleAction(button) {
   }
   if (action === "import-field-backup") {
     await importFieldBackupFile();
+    return;
+  }
+  if (action === "import-phone-backup") {
+    await importPhoneInstallBackupFile();
     return;
   }
   if (action === "reset-confirm") {
@@ -4380,6 +4392,106 @@ ${dates}
     };
     render();
     toast(error instanceof Error ? error.message : "\uD604\uC7A5\uC571 \uBC31\uC5C5 \uAC00\uC838\uC624\uAE30 \uC2E4\uD328");
+  }
+}
+async function importPhoneInstallBackupFile() {
+  const file = await pickJsonFile();
+  if (!file) return;
+  try {
+    const data = await readJsonFile(file);
+    assertPhoneInstallBackup(data);
+    const backup = normalizePhoneInstallBackup(data);
+    const recognizedDays = backup.days.length;
+    if (recognizedDays === 0) {
+      lastImportFeedback = {
+        title: "\uAC1C\uBC1C\uC571 \uBC31\uC5C5 \uBCF5\uAD6C \uACB0\uACFC",
+        fileName: file.name,
+        recognizedDays,
+        importedCount: 0,
+        skippedCount: 0,
+        importedDates: [],
+        skippedDates: [],
+        message: "\uAC1C\uBC1C\uC571 \uBC31\uC5C5\uC5D0\uC11C \uBCF5\uAD6C\uD560 \uB0A0\uC9DC\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.",
+        snapshotCreated: false,
+        backupExported: false
+      };
+      render();
+      return;
+    }
+    const existingDates = [];
+    for (const day of backup.days) {
+      if (await store.getDay(day.date)) existingDates.push(day.date);
+    }
+    const dates = backup.days.map((day) => day.date).join(", ");
+    const ok = confirm(
+      `\uAC1C\uBC1C\uC571 \uBC31\uC5C5\uC5D0\uC11C ${recognizedDays}\uC77C\uCE58\uB97C \uCC3E\uC558\uC2B5\uB2C8\uB2E4.
+
+${dates}
+
+\uBCF5\uAD6C \uC804\uC5D0 \uC804\uCCB4 \uBC31\uC5C5 \uD30C\uC77C\uC744 \uB0B4\uBCF4\uB0C5\uB2C8\uB2E4.`
+    );
+    if (!ok) {
+      lastImportFeedback = {
+        title: "\uAC1C\uBC1C\uC571 \uBC31\uC5C5 \uBCF5\uAD6C \uACB0\uACFC",
+        fileName: file.name,
+        recognizedDays,
+        importedCount: 0,
+        skippedCount: 0,
+        importedDates: [],
+        skippedDates: [],
+        message: "\uC0AC\uC6A9\uC790\uAC00 \uBCF5\uAD6C\uB97C \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.",
+        snapshotCreated: false,
+        backupExported: false
+      };
+      render();
+      return;
+    }
+    const overwrite = existingDates.length > 0 ? confirm(
+      `\uC774\uBBF8 \uC788\uB294 \uB0A0\uC9DC\uAC00 \uC788\uC2B5\uB2C8\uB2E4.
+
+${existingDates.join(", ")}
+
+\uD655\uC778: \uAE30\uC874 \uB0A0\uC9DC \uB36E\uC5B4\uC4F0\uAE30
+\uCDE8\uC18C: \uBCF5\uC0AC\uBCF8\uC73C\uB85C \uAC00\uC838\uC624\uAE30`
+    ) : false;
+    const mode = overwrite ? "overwrite" : "copy";
+    const beforeBackup = await store.createBackup({ kind: "all" });
+    downloadJsonFile(beforeBackup, buildBackupFilename(`before-phone-${mode}`));
+    const result = await store.importBackup(backup, { mode });
+    await refreshHistory();
+    currentDay = await pickDayToDisplayAfterImport(result.imported.map((item) => item.date)) ?? currentDay;
+    const afterBackup = await store.createBackup({ kind: "all" });
+    downloadJsonFile(afterBackup, buildBackupFilename(`after-phone-${mode}`));
+    lastImportFeedback = {
+      title: "\uAC1C\uBC1C\uC571 \uBC31\uC5C5 \uBCF5\uAD6C \uACB0\uACFC",
+      fileName: file.name,
+      recognizedDays,
+      importedCount: result.imported.length,
+      skippedCount: result.skipped.length,
+      importedDates: result.imported.map((item) => item.date),
+      skippedDates: result.skipped.map((item) => `${item.date}: ${item.reason}`),
+      message: mode === "overwrite" ? "\uAC1C\uBC1C\uC571 \uBC31\uC5C5\uC744 \uAE30\uC874 \uB0A0\uC9DC\uC5D0 \uB36E\uC5B4\uC368 \uBCF5\uAD6C\uD588\uC2B5\uB2C8\uB2E4." : "\uAC1C\uBC1C\uC571 \uBC31\uC5C5\uC744 \uBCF5\uC0AC\uBCF8 \uC6B0\uC120\uC73C\uB85C \uAC00\uC838\uC654\uC2B5\uB2C8\uB2E4.",
+      snapshotCreated: true,
+      backupExported: true,
+      activeDate: currentDay?.date
+    };
+    toast(`\uAC1C\uBC1C\uC571 \uBC31\uC5C5 \uBCF5\uAD6C \uC644\uB8CC: ${result.imported.length}\uC77C`);
+    render();
+  } catch (error) {
+    lastImportFeedback = {
+      title: "\uAC1C\uBC1C\uC571 \uBC31\uC5C5 \uBCF5\uAD6C \uACB0\uACFC",
+      fileName: file.name,
+      recognizedDays: 0,
+      importedCount: 0,
+      skippedCount: 0,
+      importedDates: [],
+      skippedDates: [],
+      message: error instanceof Error ? error.message : "\uAC1C\uBC1C\uC571 \uBC31\uC5C5 \uBCF5\uAD6C \uC2E4\uD328",
+      snapshotCreated: false,
+      backupExported: false
+    };
+    render();
+    toast(error instanceof Error ? error.message : "\uAC1C\uBC1C\uC571 \uBC31\uC5C5 \uBCF5\uAD6C \uC2E4\uD328");
   }
 }
 async function applyFieldImportWithAutoCorrection(days) {

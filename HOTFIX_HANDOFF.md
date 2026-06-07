@@ -13,8 +13,8 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - Season2 PWA는 보관/원본 백업 앱이며, 현재 핫픽스 대상이 아니다.
 - `C:\Codex55Workspace\delivery-master\season2`는 건드리지 않는다.
 - `SEASON2_SAFETY_PLAN.md`, `season2/README.md`는 잘못 수정됐다가 복구 완료된 상태다.
-- 현재 기준 배포 버전은 **v18**이다.
-- live `sw.js`에서 `delivery-master-install-v18` 반영 여부를 먼저 확인한다.
+- 현재 기준 배포 버전은 **v19**이다.
+- live `sw.js`에서 `delivery-master-install-v19` 반영 여부를 먼저 확인한다.
 
 ## 0-1. 핫픽스 채널 운영 목적
 
@@ -32,30 +32,33 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 
 ## 0-2. 최근 핫픽스 업데이트: 최신 5개만 유지
 
-1. v18 `cumulative-correction-helper`
+1. v19 `phone-backup-restore`
+   - 백업설정에 `개발앱 백업 복구` 추가.
+   - 정상화된 개발앱 백업 JSON을 기존 날짜에 덮어쓸 수 있음.
+   - 기존 날짜가 있으면 `확인=덮어쓰기`, `취소=복사본`.
+   - 복구 전후 전체 백업 파일 자동 내보내기.
+   - `현장앱 백업 가져오기`는 기존 날짜 보호/복사본 정책 유지.
+2. v18 `cumulative-correction-helper`
    - 구역 수량 계산 기준을 배송지 이름이 아니라 작업 순서 기준으로 보강.
    - 1구역은 실제 수량, 2구역 이후 누적 총합 입력은 앞 구역 합계를 빼서 저장.
    - 기록 정정 화면에 `이 구역 실제 수량 / 누적 총합에서 이전 구역 자동 차감` 선택 추가.
    - 기록 정정 화면에 `누락 도우미 배송 추가` 추가. 사라졌거나 빠진 무료/유료 도우미 배송을 다시 입력 가능.
    - 브라우저 검수 411x762 / DPR 2.63에서 `cumulativeRouteTotalsByOrder`, `pastMissingHelperAdded` 통과.
-2. v17 `past-record-correction`
+3. v17 `past-record-correction`
    - 백업설정 기록 정정에서 저장된 지난 날짜를 선택해 불러올 수 있게 반영.
    - 과거 날짜 기록도 기존 선택형 기록 정정 UI로 구역/도우미 기록 수정 가능.
    - `오늘로 돌아가기`로 현재 날짜 기록을 다시 불러올 수 있음.
    - 브라우저 검수 411x762 / DPR 2.63에서 `pastCorrectionSeeded`, `pastCorrectionDateLoaded`, `pastCorrectionEdited` 통과.
-3. v16 `repeatable-record-correction`
+4. v16 `repeatable-record-correction`
    - 기록 정정을 `수정할 기록 선택 -> 기록 불러오기 -> 선택 기록 정정 반영` 구조로 변경.
    - 완료 구역의 구역 종류, 이름, 수량, 시간, 실패/추가를 반복 수정 가능하게 반영.
    - 도우미 전환/무료/유료/구역 복구 후에도 다시 선택해서 재수정 가능.
    - 복구 구역은 실제 시작시간 기준으로 구역 순서를 재정렬.
    - 시간칸을 건드리지 않은 수량/이름 정정은 기존 시간 검증 때문에 막히지 않도록 수정.
    - 브라우저 검수 411x762 / DPR 2.63 전체 통과.
-4. v15 `record-correction-rework`
+5. v15 `record-correction-rework`
    - 완료 구역 -> 도우미 무료/유료 전환, 도우미 무료/유료/수량/시각 재수정, 도우미 -> 대체배송/힐스테이트/미주/추가구역 복구 1차 반영.
    - 도우미 전환 이벤트 ID를 타임라인 마지막 이벤트로 잘못 연결하던 문제 수정.
-5. v14 `helper-zone-totals`
-   - 구역 순서 기준 수량 계산과 도우미 배송 무료/유료 계산 반영.
-   - 백업설정 기록 정정 1차 반영.
 
 ## 1. 현재 실제 배포 앱 위치
 

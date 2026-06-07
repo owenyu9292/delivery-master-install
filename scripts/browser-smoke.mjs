@@ -638,6 +638,7 @@ const result = {
   statsVirtualHoliday: statsHolidayText.includes("정기휴무")
     && statsHolidayText.includes("백업 JSON에는 휴무 기록을 새로 만들지 않습니다."),
   backupShowsViewport: backupText.includes("화면 정보") && backupText.includes(`${phoneViewport.width}x${phoneViewport.height}`),
+  backupPhoneRestoreButton: backupText.includes("개발앱 백업 복구"),
   pastCorrectionSeeded: pastSeeded,
   pastCorrectionDateLoaded: pastCorrectionLoadedText.includes(pastCorrectionDate)
     && pastCorrectionLoadedText.includes("현재 정정 날짜"),
