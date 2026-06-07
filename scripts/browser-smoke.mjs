@@ -140,6 +140,38 @@ function stablePastRegularOffDate() {
   return "2024-01-01";
 }
 
+async function seedPastCorrectionDay(date) {
+  return evaluate(`new Promise((resolve) => {
+    const open = indexedDB.open("delivery-master-install");
+    open.onerror = () => resolve(false);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction("dayRecords", "readwrite");
+      const store = tx.objectStore("dayRecords");
+      const getAll = store.getAll();
+      getAll.onerror = () => resolve(false);
+      getAll.onsuccess = () => {
+        const source = getAll.result.find((day) => day && day.timeline && day.timeline.length > 0);
+        if (!source) {
+          resolve(false);
+          return;
+        }
+        const clone = structuredClone(source);
+        clone.date = ${JSON.stringify(date)};
+        clone.meta = {
+          ...clone.meta,
+          updatedAt: new Date().toISOString(),
+          recoveryStatus: "needsReview",
+        };
+        const put = store.put(clone);
+        put.onerror = () => resolve(false);
+        put.onsuccess = () => resolve(true);
+      };
+      tx.oncomplete = () => db.close();
+    };
+  })`);
+}
+
 await send("Page.enable");
 await send("Runtime.enable");
 await send("Emulation.setDeviceMetricsOverride", {
@@ -329,6 +361,33 @@ const statsHolidayText = await bodyText();
 await click('[data-action="set-tab"][data-tab="backup"]');
 await wait();
 const backupText = await bodyText();
+const pastCorrectionDate = "2026-06-07";
+const pastSeeded = await seedPastCorrectionDay(pastCorrectionDate);
+await click('[data-action="refresh"]');
+await wait(900);
+await click('[data-action="set-tab"][data-tab="backup"]');
+await wait();
+await evaluate(`(() => {
+  const date = document.querySelector("#correction-date");
+  if (!date) return false;
+  date.value = ${JSON.stringify(pastCorrectionDate)};
+  date.dispatchEvent(new Event("change", { bubbles: true }));
+  return true;
+})()`);
+await click('[data-action="load-correction-date"]');
+await wait(900);
+const pastCorrectionLoadedText = await bodyText();
+await selectCorrectionTarget("힐스테이트");
+await click('[data-action="select-correction-target"]');
+await wait(300);
+await setSelectedZoneCorrectionKind("alt");
+await setSelectedZoneCorrectionName("과거 힐스 정정");
+await setValue("#correction-zone-delivered", "111");
+await click('[data-action="save-zone-correction"]');
+await wait(900);
+const afterPastCorrectionEdit = await bodyText();
+await click('[data-action="load-today"]');
+await wait(900);
 
 await click('[data-action="reset-confirm"]');
 await wait(400);
@@ -519,6 +578,11 @@ const result = {
   statsVirtualHoliday: statsHolidayText.includes("정기휴무")
     && statsHolidayText.includes("백업 JSON에는 휴무 기록을 새로 만들지 않습니다."),
   backupShowsViewport: backupText.includes("화면 정보") && backupText.includes(`${phoneViewport.width}x${phoneViewport.height}`),
+  pastCorrectionSeeded: pastSeeded,
+  pastCorrectionDateLoaded: pastCorrectionLoadedText.includes(pastCorrectionDate)
+    && pastCorrectionLoadedText.includes("현재 정정 날짜"),
+  pastCorrectionEdited: afterPastCorrectionEdit.includes("과거 힐스 정정")
+    && afterPastCorrectionEdit.includes("111개"),
   missingQuantityBlocked: !afterMissing.includes("힐스테이트 | 완료"),
   directHilsFirstComplete: afterDirectHils.includes("힐스테이트") && afterDirectHils.includes("수량 13개"),
   directAlternateComplete: afterDirectAlt.includes("대체배송") && afterDirectAlt.includes("수량 7개"),

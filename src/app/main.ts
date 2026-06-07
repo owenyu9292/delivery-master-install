@@ -574,6 +574,7 @@ function renderMissingDateState(date: string): string {
 }
 
 function renderBackupSettingsTab(): string {
+  const resetLabel = currentDay?.date === todayKey() ? "오늘 초기화" : "선택 날짜 초기화";
   return `
     <section class="panel">
       <h2>백업설정</h2>
@@ -596,7 +597,7 @@ function renderBackupSettingsTab(): string {
       <div class="row-actions">
         <button data-action="snapshot">백업 내보내기</button>
         <button data-action="import-field-backup">현장앱 백업 가져오기</button>
-        <button class="danger" data-action="reset-confirm">오늘 초기화</button>
+        <button class="danger" data-action="reset-confirm">${resetLabel}</button>
       </div>
       ${renderRecordCorrectionPanel()}
     </section>
@@ -605,6 +606,7 @@ function renderBackupSettingsTab(): string {
 
 function renderRecordCorrectionPanel(): string {
   if (!currentDay) return "";
+  const correctionDates = buildCorrectionDateOptions();
   const completed = getOrderedZones()
     .filter((zone) => hasZoneEnded(zone.id))
     .map((zone) => {
@@ -655,6 +657,18 @@ function renderRecordCorrectionPanel(): string {
     <section class="record-correction">
       <h3>기록 정정</h3>
       <p class="hint">로그 화면은 보기 전용입니다. 잘못 누른 기록은 여기서 하나씩 불러와 여러 번 다시 고칩니다.</p>
+      <label>정정 날짜
+        <select id="correction-date">
+          ${correctionDates.map((date) => `
+            <option value="${escapeAttribute(date)}"${date === currentDay!.date ? " selected" : ""}>${escapeHtml(date)}${date === todayKey() ? " · 오늘" : ""}</option>
+          `).join("")}
+        </select>
+      </label>
+      <div class="row-actions">
+        <button data-action="load-correction-date">선택 날짜 불러오기</button>
+        <button data-action="load-today">오늘로 돌아가기</button>
+      </div>
+      <p class="hint">현재 정정 날짜: ${escapeHtml(currentDay.date)}. 지난 날짜를 불러와 고쳐도 해당 날짜 기록만 저장됩니다.</p>
       ${completed.length === 0 && helpers.length === 0 ? `<p class="empty-state">정정할 기록이 없습니다.</p>` : ""}
       ${targets.length === 0 ? "" : `
         <label>수정할 기록
@@ -670,6 +684,14 @@ function renderRecordCorrectionPanel(): string {
       `}
     </section>
   `;
+}
+
+function buildCorrectionDateOptions(): string[] {
+  const dates = new Set<string>();
+  if (currentDay) dates.add(currentDay.date);
+  historyDays.forEach((day) => dates.add(day.date));
+  dates.add(todayKey());
+  return [...dates].sort((a, b) => b.localeCompare(a));
 }
 
 function renderZoneCorrectionForm(zone: ZoneRecord, delivered: number): string {
@@ -1536,6 +1558,17 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     render();
     return;
   }
+  if (action === "load-today") {
+    await loadToday();
+    activeCorrectionTargetId = "";
+    activeTab = "backup";
+    render();
+    return;
+  }
+  if (action === "load-correction-date") {
+    await loadCorrectionDate();
+    return;
+  }
   if (action === "copy-report") {
     const report = buildDailyReport(currentDay, calculateDay(currentDay), { title: "Delivery Master Install Report" });
     await navigator.clipboard.writeText(report.text);
@@ -1553,7 +1586,8 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     return;
   }
   if (action === "reset-confirm") {
-    if (!confirm("오늘 기록을 초기화할까요? 먼저 스냅샷을 만든 뒤 진행합니다.")) return;
+    const label = currentDay.date === todayKey() ? "오늘 기록" : `${currentDay.date} 기록`;
+    if (!confirm(`${label}을 초기화할까요? 먼저 스냅샷을 만든 뒤 진행합니다.`)) return;
     await downloadPreparedSnapshot("reset-before", { kind: "date", date: currentDay.date });
     currentDay = createEmptyDay(currentDay.date);
     await store.saveDay(currentDay);
@@ -2681,6 +2715,21 @@ async function pickDayToDisplayAfterImport(importedDates: string[]): Promise<Day
   if (importedDates.includes(today)) return store.getDay(today);
   const firstDate = importedDates[0];
   return firstDate ? store.getDay(firstDate) : store.getDay(today);
+}
+
+async function loadCorrectionDate(): Promise<void> {
+  const date = readText("#correction-date", currentDay?.date ?? todayKey());
+  const day = await store.getDay(date);
+  if (!day) {
+    toast(`${date} 저장 기록이 없습니다.`);
+    return;
+  }
+  currentDay = day;
+  activeTab = "backup";
+  activeCorrectionTargetId = "";
+  await refreshHistory();
+  render();
+  toast(`${date} 기록을 불러왔습니다.`);
 }
 
 function downloadJsonFile(value: unknown, filename: string): void {

@@ -1013,3 +1013,32 @@ git 작업:
 - `npm run build`: 통과
 - 브라우저 스모크 검수: 411x762 / DPR 2.63, 별도 Chrome 프로필, 전체 항목 true
 - 추가 확인: `correctionZoneRepeatedEdit` 통과
+
+## 2026-06-08 지난 날짜 기록 정정 v17
+
+상태: 구현/검수 완료
+
+수정 파일:
+
+- `src/app/main.ts`
+- `src/app/version.ts`
+- `scripts/browser-smoke.mjs`
+- `todo.md`
+- `progress.md`
+- `changelog.md`
+- `HOTFIX_HANDOFF.md`
+
+반영 내용:
+
+- `백업설정 > 기록 정정`에 `정정 날짜` 선택을 추가했다.
+- 저장된 지난 날짜 기록을 불러와 기존 선택형 기록 정정 UI에서 수정할 수 있게 했다.
+- 지난 날짜 정정 후 `오늘로 돌아가기`로 현재 날짜 기록을 다시 불러올 수 있게 했다.
+- 선택 날짜가 오늘이 아니면 초기화 버튼 문구를 `선택 날짜 초기화`로 바꿨다.
+- 앱 버전과 캐시를 `0.2.16-past-record-correction / v17`로 올렸다.
+
+검수 결과:
+
+- `npm run check`: 통과, domain tests 48/48
+- `npm run build`: 통과
+- 브라우저 스모크 검수: 411x762 / DPR 2.63, 별도 Chrome 프로필, 전체 항목 true
+- 추가 확인: `pastCorrectionSeeded`, `pastCorrectionDateLoaded`, `pastCorrectionEdited` 통과

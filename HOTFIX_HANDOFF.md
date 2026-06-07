@@ -13,8 +13,8 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - Season2 PWA는 보관/원본 백업 앱이며, 현재 핫픽스 대상이 아니다.
 - `C:\Codex55Workspace\delivery-master\season2`는 건드리지 않는다.
 - `SEASON2_SAFETY_PLAN.md`, `season2/README.md`는 잘못 수정됐다가 복구 완료된 상태다.
-- 현재 기준 배포 버전은 **v16**이다.
-- live `sw.js`에서 `delivery-master-install-v16` 반영 여부를 먼저 확인한다.
+- 현재 기준 배포 버전은 **v17**이다.
+- live `sw.js`에서 `delivery-master-install-v17` 반영 여부를 먼저 확인한다.
 
 ## 0-1. 핫픽스 채널 운영 목적
 
@@ -32,23 +32,26 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 
 ## 0-2. 최근 핫픽스 업데이트: 최신 5개만 유지
 
-1. v16 `repeatable-record-correction`
+1. v17 `past-record-correction`
+   - 백업설정 기록 정정에서 저장된 지난 날짜를 선택해 불러올 수 있게 반영.
+   - 과거 날짜 기록도 기존 선택형 기록 정정 UI로 구역/도우미 기록 수정 가능.
+   - `오늘로 돌아가기`로 현재 날짜 기록을 다시 불러올 수 있음.
+   - 브라우저 검수 411x762 / DPR 2.63에서 `pastCorrectionSeeded`, `pastCorrectionDateLoaded`, `pastCorrectionEdited` 통과.
+2. v16 `repeatable-record-correction`
    - 기록 정정을 `수정할 기록 선택 -> 기록 불러오기 -> 선택 기록 정정 반영` 구조로 변경.
    - 완료 구역의 구역 종류, 이름, 수량, 시간, 실패/추가를 반복 수정 가능하게 반영.
    - 도우미 전환/무료/유료/구역 복구 후에도 다시 선택해서 재수정 가능.
    - 복구 구역은 실제 시작시간 기준으로 구역 순서를 재정렬.
    - 시간칸을 건드리지 않은 수량/이름 정정은 기존 시간 검증 때문에 막히지 않도록 수정.
    - 브라우저 검수 411x762 / DPR 2.63 전체 통과.
-2. v15 `record-correction-rework`
+3. v15 `record-correction-rework`
    - 완료 구역 -> 도우미 무료/유료 전환, 도우미 무료/유료/수량/시각 재수정, 도우미 -> 대체배송/힐스테이트/미주/추가구역 복구 1차 반영.
    - 도우미 전환 이벤트 ID를 타임라인 마지막 이벤트로 잘못 연결하던 문제 수정.
-3. v14 `helper-zone-totals`
+4. v14 `helper-zone-totals`
    - 구역 순서 기준 수량 계산과 도우미 배송 무료/유료 계산 반영.
    - 백업설정 기록 정정 1차 반영.
-4. v13 `direct-delivery-hotfix`
+5. v13 `direct-delivery-hotfix`
    - 미주 외 구역에서 바로 배송 시작 루트도 정리 완료 없이 완료 저장 가능하게 수정.
-5. v12 `field-final-polish`
-   - 정리 완료 버튼 순서와 주간/월간 비율 배지 보정.
 
 ## 1. 현재 실제 배포 앱 위치
 
@@ -106,9 +109,31 @@ current-source\docs\hotfixes\
 - 새 대화창에서는 `current-source`를 원본으로 삼지 않는다.
 - 이 폴더는 이관 정리 전까지 남겨 두는 격리 참고자료이며, 배포 대상이 아니다.
 
-## 3. v16에 실제 반영된 최신 수정
+## 3. v17에 실제 반영된 최신 수정
 
-### 3-0. v16 기록 정정 반복 수정
+### 3-0. v17 지난 날짜 기록 정정
+
+목적:
+
+- 자정이 지난 뒤에도 전날/과거 날짜 기록을 불러와 수정할 수 있게 한다.
+- 당일에는 몰랐지만 나중에 발견한 구역명, 수량, 도우미 무료/유료, 시간 오류를 복구할 수 있게 한다.
+
+v17 실제 배포 앱에 반영된 구현:
+
+- `백업설정 > 기록 정정 > 정정 날짜`
+- 선택 날짜 불러오기
+- 오늘로 돌아가기
+- 과거 날짜 기록도 기존 `수정할 기록 선택 -> 기록 불러오기 -> 선택 기록 정정 반영` 구조로 수정
+- 선택 날짜가 오늘이 아니면 `선택 날짜 초기화`로 표시해 혼동 완화
+
+검수:
+
+- 브라우저 스모크 411x762 / DPR 2.63 전체 통과
+- `pastCorrectionSeeded`, `pastCorrectionDateLoaded`, `pastCorrectionEdited` 통과
+
+## 4. v16에 실제 반영된 최신 수정
+
+### 4-0. v16 기록 정정 반복 수정
 
 목적:
 
@@ -223,7 +248,7 @@ v14 실제 배포 앱에 반영된 계산 원칙:
 - 대체배송/추가구역 -> 도우미 무료/유료 전환
 - 수정 전 자동 스냅샷
 - 수정 후 리포트/통계 재계산
-- 상태: v16 반영 완료. 완료 구역의 구역명/타입/수량/시간 일반 수정과 도우미 무료/유료 전환/재수정/구역 복구를 반복 수정할 수 있다.
+- 상태: v17 반영 완료. 완료 구역의 구역명/타입/수량/시간 일반 수정과 도우미 무료/유료 전환/재수정/구역 복구를 반복 수정할 수 있고, 지난 날짜 기록도 불러와 수정할 수 있다.
 
 ## 5. 새 대화창에서 첫 번째로 할 일
 
@@ -236,7 +261,7 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy
 
 3. 이 폴더의 `src` 원본과 빌드 설정을 확인한다.
 4. 이전 원본 폴더 `C:\#WORKSPACE\AI_HUB\AI_WORKSPACE\PROJECTS\delivery-master-install`는 참고/비상 확인용일 뿐, 새 작업 기준으로 쓰지 않는다.
-5. v16 이후 새 핫픽스는 이관된 `src`에 반영하고 빌드한다.
+5. v17 이후 새 핫픽스는 이관된 `src`에 반영하고 빌드한다.
 6. 빌드 결과를 루트 게시 파일에 반영하기 전 결과를 보고한다.
 7. 절대 `current-source`를 실제 배포 앱으로 덮어쓰지 않는다.
 
@@ -250,8 +275,8 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - 이전 원본 폴더의 src는 이 폴더로 이관된 기준으로 작업한다.
 - current-source는 참고 스냅샷이지 원본이나 배포 대상이 아니다.
 - Season2는 보관용 원본이라 건드리지 않는다.
-- v16에는 구역 순서 수량 계산, 도우미 배송 무료/유료, 백업설정 선택형 반복 기록 정정이 이미 반영되어 있다.
-- 목표는 v16 이후 새 필드 버그만 이 기준 위에서 핫픽스하는 것이다.
+- v17에는 구역 순서 수량 계산, 도우미 배송 무료/유료, 백업설정 선택형 반복 기록 정정, 지난 날짜 기록 정정이 이미 반영되어 있다.
+- 목표는 v17 이후 새 필드 버그만 이 기준 위에서 핫픽스하는 것이다.
 - 먼저 이 폴더의 src 원본과 빌드 설정이 존재하는지 확인해.
 ```
 
@@ -259,10 +284,10 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 
 `delivery-master-install-deploy` 내부:
 
-- v16 기준 커밋/푸시 완료 여부는 `git log -1 --oneline`과 live `sw.js`로 확인한다.
+- v17 기준 커밋/푸시 완료 여부는 `git log -1 --oneline`과 live `sw.js`로 확인한다.
 - 이전 원본 `src`/설정/문서 이관 완료
 - `current-source/`는 `.gitignore`로 제외된 참고 스냅샷
-- live `sw.js`의 캐시명 `delivery-master-install-v16` 확인 필요
+- live `sw.js`의 캐시명 `delivery-master-install-v17` 확인 필요
 
 상위 `delivery-master` 쪽:
 

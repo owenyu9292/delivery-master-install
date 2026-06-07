@@ -818,3 +818,35 @@
 - `npm run build`: 통과.
 - 브라우저 스모크 검수: 411x762 / DPR 2.63, 별도 Chrome 프로필, 전체 항목 true.
 - 통과 항목: 도우미 무료/유료 전환, 도우미 -> 대체배송/힐스테이트/미주 복구, 완료 구역 반복 수정, 대형 수량 경고, 모바일 화면 기준.
+
+## 2026-06-08 지난 날짜 기록 정정 보강
+
+상태: 구현/검수 완료
+
+코기 이해:
+- 자정이 지나면 전날 기록을 앱 화면에서 바로 수정할 수 없었다.
+- 현장에서는 당일에는 몰랐다가 나중에 틀린 기록을 발견하는 일이 생긴다.
+- 기록 정정은 오늘뿐 아니라 저장된 과거 날짜를 선택해 불러와 수정할 수 있어야 한다.
+
+수정 파일:
+- `src/app/main.ts`
+- `src/app/version.ts`
+- `scripts/browser-smoke.mjs`
+- `todo.md`
+- `progress.md`
+- `changelog.md`
+- `HOTFIX_HANDOFF.md`
+
+수정 결과:
+- `백업설정 > 기록 정정`에 `정정 날짜` 선택을 추가했다.
+- 선택 날짜를 불러오면 그 날짜 기록이 현재 정정 대상으로 바뀐다.
+- 과거 날짜 기록도 기존 선택형 반복 정정 UI로 구역/도우미 기록을 수정할 수 있다.
+- `오늘로 돌아가기` 버튼으로 현재 날짜 업무 화면으로 복귀할 수 있다.
+- 선택 날짜가 오늘이 아닐 때 초기화 버튼 문구를 `선택 날짜 초기화`로 바꿔 혼동을 줄였다.
+- `APP_VERSION / CACHE_VERSION`을 `0.2.16-past-record-correction / v17`로 올렸다.
+
+검수 결과:
+- `npm run check`: 통과, domain tests 48/48.
+- `npm run build`: 통과.
+- 브라우저 스모크 검수: 411x762 / DPR 2.63, 별도 Chrome 프로필, 전체 항목 true.
+- 추가 통과 항목: `pastCorrectionSeeded`, `pastCorrectionDateLoaded`, `pastCorrectionEdited`.

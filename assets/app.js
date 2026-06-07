@@ -2026,9 +2026,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.15-repeatable-record-correction";
+var APP_VERSION = "0.2.16-past-record-correction";
 var APP_UPDATED_LABEL = "2026-06-07 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v16";
+var CACHE_VERSION = "v17";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -2468,6 +2468,7 @@ function renderMissingDateState(date) {
   `;
 }
 function renderBackupSettingsTab() {
+  const resetLabel = currentDay?.date === todayKey() ? "\uC624\uB298 \uCD08\uAE30\uD654" : "\uC120\uD0DD \uB0A0\uC9DC \uCD08\uAE30\uD654";
   return `
     <section class="panel">
       <h2>\uBC31\uC5C5\uC124\uC815</h2>
@@ -2490,7 +2491,7 @@ function renderBackupSettingsTab() {
       <div class="row-actions">
         <button data-action="snapshot">\uBC31\uC5C5 \uB0B4\uBCF4\uB0B4\uAE30</button>
         <button data-action="import-field-backup">\uD604\uC7A5\uC571 \uBC31\uC5C5 \uAC00\uC838\uC624\uAE30</button>
-        <button class="danger" data-action="reset-confirm">\uC624\uB298 \uCD08\uAE30\uD654</button>
+        <button class="danger" data-action="reset-confirm">${resetLabel}</button>
       </div>
       ${renderRecordCorrectionPanel()}
     </section>
@@ -2498,6 +2499,7 @@ function renderBackupSettingsTab() {
 }
 function renderRecordCorrectionPanel() {
   if (!currentDay) return "";
+  const correctionDates = buildCorrectionDateOptions();
   const completed = getOrderedZones().filter((zone) => hasZoneEnded(zone.id)).map((zone) => {
     const end = latestZoneEvent(zone.id, "zone_end");
     const payload = end?.payload;
@@ -2538,6 +2540,18 @@ function renderRecordCorrectionPanel() {
     <section class="record-correction">
       <h3>\uAE30\uB85D \uC815\uC815</h3>
       <p class="hint">\uB85C\uADF8 \uD654\uBA74\uC740 \uBCF4\uAE30 \uC804\uC6A9\uC785\uB2C8\uB2E4. \uC798\uBABB \uB204\uB978 \uAE30\uB85D\uC740 \uC5EC\uAE30\uC11C \uD558\uB098\uC529 \uBD88\uB7EC\uC640 \uC5EC\uB7EC \uBC88 \uB2E4\uC2DC \uACE0\uCE69\uB2C8\uB2E4.</p>
+      <label>\uC815\uC815 \uB0A0\uC9DC
+        <select id="correction-date">
+          ${correctionDates.map((date) => `
+            <option value="${escapeAttribute(date)}"${date === currentDay.date ? " selected" : ""}>${escapeHtml(date)}${date === todayKey() ? " \xB7 \uC624\uB298" : ""}</option>
+          `).join("")}
+        </select>
+      </label>
+      <div class="row-actions">
+        <button data-action="load-correction-date">\uC120\uD0DD \uB0A0\uC9DC \uBD88\uB7EC\uC624\uAE30</button>
+        <button data-action="load-today">\uC624\uB298\uB85C \uB3CC\uC544\uAC00\uAE30</button>
+      </div>
+      <p class="hint">\uD604\uC7AC \uC815\uC815 \uB0A0\uC9DC: ${escapeHtml(currentDay.date)}. \uC9C0\uB09C \uB0A0\uC9DC\uB97C \uBD88\uB7EC\uC640 \uACE0\uCCD0\uB3C4 \uD574\uB2F9 \uB0A0\uC9DC \uAE30\uB85D\uB9CC \uC800\uC7A5\uB429\uB2C8\uB2E4.</p>
       ${completed.length === 0 && helpers.length === 0 ? `<p class="empty-state">\uC815\uC815\uD560 \uAE30\uB85D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</p>` : ""}
       ${targets.length === 0 ? "" : `
         <label>\uC218\uC815\uD560 \uAE30\uB85D
@@ -2553,6 +2567,13 @@ function renderRecordCorrectionPanel() {
       `}
     </section>
   `;
+}
+function buildCorrectionDateOptions() {
+  const dates = /* @__PURE__ */ new Set();
+  if (currentDay) dates.add(currentDay.date);
+  historyDays.forEach((day) => dates.add(day.date));
+  dates.add(todayKey());
+  return [...dates].sort((a, b) => b.localeCompare(a));
 }
 function renderZoneCorrectionForm(zone, delivered) {
   const start = latestZoneEvent(zone.id, "zone_start");
@@ -3281,6 +3302,17 @@ async function handleAction(button) {
     render();
     return;
   }
+  if (action === "load-today") {
+    await loadToday();
+    activeCorrectionTargetId = "";
+    activeTab = "backup";
+    render();
+    return;
+  }
+  if (action === "load-correction-date") {
+    await loadCorrectionDate();
+    return;
+  }
   if (action === "copy-report") {
     const report = buildDailyReport(currentDay, calculateDay(currentDay), { title: "Delivery Master Install Report" });
     await navigator.clipboard.writeText(report.text);
@@ -3298,7 +3330,8 @@ async function handleAction(button) {
     return;
   }
   if (action === "reset-confirm") {
-    if (!confirm("\uC624\uB298 \uAE30\uB85D\uC744 \uCD08\uAE30\uD654\uD560\uAE4C\uC694? \uBA3C\uC800 \uC2A4\uB0C5\uC0F7\uC744 \uB9CC\uB4E0 \uB4A4 \uC9C4\uD589\uD569\uB2C8\uB2E4.")) return;
+    const label = currentDay.date === todayKey() ? "\uC624\uB298 \uAE30\uB85D" : `${currentDay.date} \uAE30\uB85D`;
+    if (!confirm(`${label}\uC744 \uCD08\uAE30\uD654\uD560\uAE4C\uC694? \uBA3C\uC800 \uC2A4\uB0C5\uC0F7\uC744 \uB9CC\uB4E0 \uB4A4 \uC9C4\uD589\uD569\uB2C8\uB2E4.`)) return;
     await downloadPreparedSnapshot("reset-before", { kind: "date", date: currentDay.date });
     currentDay = createEmptyDay(currentDay.date);
     await store.saveDay(currentDay);
@@ -4307,6 +4340,20 @@ async function pickDayToDisplayAfterImport(importedDates) {
   if (importedDates.includes(today)) return store.getDay(today);
   const firstDate = importedDates[0];
   return firstDate ? store.getDay(firstDate) : store.getDay(today);
+}
+async function loadCorrectionDate() {
+  const date = readText("#correction-date", currentDay?.date ?? todayKey());
+  const day = await store.getDay(date);
+  if (!day) {
+    toast(`${date} \uC800\uC7A5 \uAE30\uB85D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.`);
+    return;
+  }
+  currentDay = day;
+  activeTab = "backup";
+  activeCorrectionTargetId = "";
+  await refreshHistory();
+  render();
+  toast(`${date} \uAE30\uB85D\uC744 \uBD88\uB7EC\uC654\uC2B5\uB2C8\uB2E4.`);
 }
 function downloadJsonFile(value, filename) {
   const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
