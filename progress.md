@@ -3,6 +3,8 @@
 - 핫픽스 채널은 일반 작업창을 대체하는 개발 채널이 아니라 핸드폰 현장 접속 안정성을 위한 초경량 장애 대응 채널로 정리했다.
 - `instruction.md`에 `0-8. 최상위 작업 전제: 핫픽스 채널은 현장 접속용 초경량 채널`을 추가했다.
 - `HOTFIX_HANDOFF.md`에도 같은 운영 목적을 넣어, 새 핫픽스 창이 긴 대화 없이 최신 상태만 읽고 움직이게 했다.
+- 핫픽스 채널에서 현장 긴급 수정 요청이 들어오면 현장에서 막힌 부분을 임시로 틀어막는 최소 수정, 검사, 빌드, 배포까지 전량 승인으로 간주하고 승인 질문 없이 즉시 처리한다는 규칙을 추가했다.
+- 핫픽스는 정식 설계 완료가 아니므로, 막은 내용과 남은 정식 수정 항목을 문서화하고 일반 작업창으로 넘긴다는 기준을 추가했다.
 - `C:\Codex55Workspace\delivery-master\delivery-master-install-deploy`를 개발앱 PWA의 단일 source-of-truth 및 GitHub Pages 배포 repo로 고정했다.
 - 이전 작업 폴더 `C:\#WORKSPACE\AI_HUB\AI_WORKSPACE\PROJECTS\delivery-master-install`에서 `src`, `scripts`, `test`, `public`, 빌드 설정, 작업 문서를 이관했다.
 - `current-source/`는 실제 원본도 배포 대상도 아닌 격리 참고 스냅샷으로 분류했다.
