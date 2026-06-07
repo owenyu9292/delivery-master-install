@@ -17,6 +17,15 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - 최신 커밋은 `650be6a Restore install source and fix helper zone totals`이다.
 - live `sw.js`에서 `delivery-master-install-v14` 반영까지 확인됐다.
 
+## 0-1. 핫픽스 채널 운영 목적
+
+- 이 채널은 핸드폰 현장 접속 안정성을 위한 초경량 핫픽스 채널이다.
+- 긴 기획, 회고, 구조 정리, 대규모 설계는 일반 작업창에서 처리한다.
+- 이 채널은 `HOTFIX_HANDOFF.md` 기준으로 현재 버전, 작업 폴더, 금지 폴더, 최신 반영 상태만 빠르게 확인하고 움직인다.
+- 현장 장애 시에는 `짧은 원인 확인 -> 최소 수정 -> 검사/빌드 -> 배포 확인 -> 현장 확인 요청` 순서로 진행한다.
+- 대화량을 늘리는 긴 설명, 전체 로그 덤프, 반복 질문은 피한다.
+- 새 핫픽스 결과는 이 문서에 짧게 갱신해 다음 핫픽스 창도 같은 기준으로 시작하게 한다.
+
 ## 1. 현재 실제 배포 앱 위치
 
 실제 GitHub Pages 배포 repo이자 앞으로의 단일 원본 작업 폴더는 아래다.

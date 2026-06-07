@@ -1,5 +1,8 @@
 # 2026-06-07 source-of-truth 이관 정리
 
+- 핫픽스 채널은 일반 작업창을 대체하는 개발 채널이 아니라 핸드폰 현장 접속 안정성을 위한 초경량 장애 대응 채널로 정리했다.
+- `instruction.md`에 `0-8. 최상위 작업 전제: 핫픽스 채널은 현장 접속용 초경량 채널`을 추가했다.
+- `HOTFIX_HANDOFF.md`에도 같은 운영 목적을 넣어, 새 핫픽스 창이 긴 대화 없이 최신 상태만 읽고 움직이게 했다.
 - `C:\Codex55Workspace\delivery-master\delivery-master-install-deploy`를 개발앱 PWA의 단일 source-of-truth 및 GitHub Pages 배포 repo로 고정했다.
 - 이전 작업 폴더 `C:\#WORKSPACE\AI_HUB\AI_WORKSPACE\PROJECTS\delivery-master-install`에서 `src`, `scripts`, `test`, `public`, 빌드 설정, 작업 문서를 이관했다.
 - `current-source/`는 실제 원본도 배포 대상도 아닌 격리 참고 스냅샷으로 분류했다.

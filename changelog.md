@@ -1,5 +1,9 @@
 # 2026-06-07
 
+- 핫픽스 채널 운영 목적을 정규화했다.
+- 핫픽스 채널은 핸드폰 현장 접속 안정성을 위한 초경량 장애 대응 채널이며, 긴 기획/회고/구조 정리는 일반 작업창에서 처리한다.
+- `instruction.md`에 핫픽스 채널 최상위 규칙을 추가했다.
+- `HOTFIX_HANDOFF.md`에 핫픽스 채널 운영 목적과 최소 진행 흐름을 추가했다.
 - `delivery-master-install-deploy`를 개발앱 PWA의 단일 source-of-truth 및 GitHub Pages 배포 repo로 고정했다.
 - 이전 작업 폴더 `C:\#WORKSPACE\AI_HUB\AI_WORKSPACE\PROJECTS\delivery-master-install`에서 원본 `src`, 빌드/테스트 스크립트, 설정, 작업 문서를 이관했다.
 - `README.md`, `instruction.md`, `HOTFIX_HANDOFF.md`, `progress.md`, `todo.md`를 새 루트 기준으로 갱신했다.
