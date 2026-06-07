@@ -946,3 +946,38 @@ git 작업:
 - `npm run check`
 - `npm run build`
 - `npm run check:codex`
+
+## 2026-06-07 기록 정정 재수정 보강
+
+상태: 구현/검수 진행 중
+
+수정 파일:
+
+- `instruction.md`
+- `src/app/main.ts`
+- `scripts/browser-smoke.mjs`
+- `todo.md`
+- `progress.md`
+- `unresolved.md`
+- `changelog.md`
+
+반영 내용:
+
+- 백업설정의 `기록 정정`을 단발 전환 버튼이 아니라 반복 수정 가능한 정정 목록으로 바꿨다.
+- 완료 구역을 도우미 배송 무료/유료로 전환할 수 있게 했다.
+- 전환된 도우미 기록은 무료/유료, 수량, 시각을 다시 수정할 수 있게 했다.
+- 잘못 전환한 도우미 기록을 대체배송, 힐스테이트, 미주, 추가구역 기록으로 복구할 수 있게 했다.
+- 도우미 전환 시 새 이벤트 ID를 타임라인 마지막 이벤트로 잘못 연결하던 문제를 고쳤다.
+- 복구된 미주/힐스테이트 구역도 주간/월간 비율 통계에서 미주/힐스로 분류되게 보정했다.
+- 브라우저 스모크에 도우미/구역 역변환 검수 루트를 추가했다.
+- 앱 버전과 캐시를 배포 후보 `0.2.14-record-correction-rework / v15`로 올렸다.
+- 사전검사 스크립트가 예전 source 폴더명만 허용하던 문제를 현재 source-of-truth 폴더명 기준으로 고쳤다.
+- 브라우저 검수용 임시 프로필 `.chrome-smoke/`가 커밋에 섞이지 않도록 `.gitignore`에 추가했다.
+- `HOTFIX_HANDOFF.md`를 v15 기준으로 갱신하고, 최신 업데이트 기록은 5개만 유지하며 6개째부터 가장 오래된 항목을 삭제하는 규칙을 추가했다.
+
+검수 결과:
+
+- `npm run check`: 통과, domain tests 48/48
+- `npm run build`: 통과
+- 브라우저 스모크 검수: 411x762 / DPR 2.63, 전체 항목 true
+- 추가 검수 항목: `directHilsFirstComplete`, `directAlternateComplete`, `directCustomComplete`, `correctionAltToPaidHelper`, `correctionPaidToFreeHelper`, `correctionHelperRestoredToAlt`, `correctionHelperRestoredToHils`, `correctionHelperRestoredToMiju`

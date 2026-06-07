@@ -2026,9 +2026,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.13-helper-zone-order-hotfix";
+var APP_VERSION = "0.2.14-record-correction-rework";
 var APP_UPDATED_LABEL = "2026-06-07 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v14";
+var CACHE_VERSION = "v15";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -2503,20 +2503,65 @@ function renderRecordCorrectionPanel() {
     const delivered = typeof payload?.delivered === "number" ? payload.delivered : 0;
     return { zone, delivered, end };
   }).filter((item) => item.end && item.delivered > 0);
+  const helpers = currentDay.helpers.map((helper) => {
+    const event = currentDay?.timeline.find(
+      (candidate) => candidate.type === "helper_add" && helper.linkedEventIds.includes(candidate.id)
+    );
+    const payload = event?.payload;
+    const kind = normalizeReceivedHelperKind(helper.kind ?? payload?.helperKind);
+    const quantity = typeof helper.quantity === "number" ? helper.quantity : typeof payload?.quantity === "number" ? payload.quantity : 0;
+    return { helper, event, kind, quantity };
+  }).filter((item) => item.event && item.kind && item.quantity > 0);
   return `
     <section class="record-correction">
       <h3>\uAE30\uB85D \uC815\uC815</h3>
-      <p class="hint">\uB85C\uADF8 \uD654\uBA74\uC740 \uBCF4\uAE30 \uC804\uC6A9\uC785\uB2C8\uB2E4. \uC798\uBABB \uC644\uB8CC\uD55C \uAD6C\uC5ED\uC744 \uC5EC\uAE30\uC11C \uB3C4\uC6B0\uBBF8 \uBC30\uC1A1\uC73C\uB85C \uC804\uD658\uD569\uB2C8\uB2E4.</p>
-      ${completed.length === 0 ? `<p class="empty-state">\uC804\uD658\uD560 \uC644\uB8CC \uAD6C\uC5ED\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</p>` : `
+      <p class="hint">\uB85C\uADF8 \uD654\uBA74\uC740 \uBCF4\uAE30 \uC804\uC6A9\uC785\uB2C8\uB2E4. \uC798\uBABB \uB204\uB978 \uAE30\uB85D\uC740 \uC5EC\uAE30\uC11C \uB2E4\uC2DC \uACE0\uCE69\uB2C8\uB2E4. \uB3C4\uC6B0\uBBF8 \uBB34\uB8CC/\uC720\uB8CC\uB294 \uC5EC\uB7EC \uBC88 \uC7AC\uC218\uC815\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</p>
+      ${completed.length === 0 && helpers.length === 0 ? `<p class="empty-state">\uC815\uC815\uD560 \uAE30\uB85D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</p>` : ""}
+      ${completed.length === 0 ? "" : `
         <div class="correction-list">
           ${completed.map(({ zone, delivered }) => `
             <article>
               <strong>${escapeHtml(zone.name)}</strong>
-              <p>${delivered}\uAC1C \xB7 ${zone.order}\uAD6C\uC5ED</p>
-              <div class="segmented">
-                <button data-action="convert-zone-helper-free" data-zone="${zone.id}">\uB3C4\uC6B0\uBBF8 \uBB34\uB8CC\uB85C \uC804\uD658</button>
-                <button data-action="convert-zone-helper-paid" data-zone="${zone.id}">\uB3C4\uC6B0\uBBF8 \uC720\uB8CC\uB85C \uC804\uD658</button>
-              </div>
+              <p>${delivered}\uAC1C \xB7 ${zone.order}\uAD6C\uC5ED \uC644\uB8CC \uAE30\uB85D</p>
+              <label>\uC815\uC815 \uC885\uB958
+                <select data-zone-correction="${escapeAttribute(zone.id)}">
+                  <option value="free_received">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC\uB85C \uC804\uD658</option>
+                  <option value="paid_received">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC\uB85C \uC804\uD658</option>
+                </select>
+              </label>
+              <button data-action="apply-zone-correction" data-zone="${escapeAttribute(zone.id)}">\uC815\uC815 \uC800\uC7A5</button>
+            </article>
+          `).join("")}
+        </div>
+      `}
+      ${helpers.length === 0 ? "" : `
+        <div class="correction-list">
+          ${helpers.map(({ helper, event, kind, quantity }) => `
+            <article>
+              <strong>${escapeHtml(helper.name)}</strong>
+              <p>${quantity}\uAC1C \xB7 ${kind === "free_received" ? "\uD6A8\uC728 \uC81C\uC678" : "\uD6A8\uC728 \uD3EC\uD568"}</p>
+              <label>\uB3C4\uC6B0\uBBF8 \uC885\uB958
+                <select data-helper-kind="${escapeAttribute(helper.id)}">
+                  <option value="free_received"${kind === "free_received" ? " selected" : ""}>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC</option>
+                  <option value="paid_received"${kind === "paid_received" ? " selected" : ""}>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC</option>
+                </select>
+              </label>
+              <label>\uC218\uB7C9
+                <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity}">
+              </label>
+              <label>\uC2DC\uAC01
+                <input data-helper-at="${escapeAttribute(helper.id)}" type="datetime-local" value="${formatIsoForInput(event.at)}">
+              </label>
+              <button data-action="save-helper-correction" data-helper="${escapeAttribute(helper.id)}">\uB3C4\uC6B0\uBBF8 \uAE30\uB85D \uC218\uC815 \uC800\uC7A5</button>
+              <label>\uAD6C\uC5ED\uC73C\uB85C \uB418\uB3CC\uB9AC\uAE30
+                <select data-helper-zone-restore="${escapeAttribute(helper.id)}">
+                  <option value="alt">\uB300\uCCB4\uBC30\uC1A1</option>
+                  <option value="hils">\uD790\uC2A4\uD14C\uC774\uD2B8</option>
+                  <option value="miju">\uBBF8\uC8FC</option>
+                  <option value="custom">\uCD94\uAC00\uAD6C\uC5ED</option>
+                </select>
+              </label>
+              <button data-action="restore-helper-zone" data-helper="${escapeAttribute(helper.id)}">\uAD6C\uC5ED \uAE30\uB85D\uC73C\uB85C \uBCF5\uAD6C</button>
             </article>
           `).join("")}
         </div>
@@ -3003,10 +3048,11 @@ function formatBucketShortLabel(key) {
   return "\uB300";
 }
 function getZoneBucket(dayRecord, zoneId) {
-  if (zoneId === "miju") return "miju";
-  if (zoneId === "hils") return "hils";
+  const id = zoneId.toLowerCase();
   const name = getZoneNameFromDay(dayRecord, zoneId);
-  return name.includes("\uD790\uC2A4") ? "hils" : "alternate";
+  if (id === "miju" || id.includes("miju") || name.includes("\uBBF8\uC8FC")) return "miju";
+  if (id === "hils" || id.includes("hils") || name.includes("\uD790\uC2A4")) return "hils";
+  return "alternate";
 }
 function getZoneNameFromDay(dayRecord, zoneId) {
   const existing = dayRecord.zones.find((zone) => zone.id === zoneId)?.name;
@@ -3262,12 +3308,16 @@ async function handleAction(button) {
     await saveAndRender();
     return;
   }
-  if (action === "convert-zone-helper-free" && zoneId) {
-    await convertCompletedZoneToHelper(zoneId, "free_received");
+  if (action === "apply-zone-correction" && zoneId) {
+    await applyZoneCorrection(zoneId);
     return;
   }
-  if (action === "convert-zone-helper-paid" && zoneId) {
-    await convertCompletedZoneToHelper(zoneId, "paid_received");
+  if (action === "save-helper-correction") {
+    await saveHelperCorrection(button.dataset.helper);
+    return;
+  }
+  if (action === "restore-helper-zone") {
+    await restoreHelperToZone(button.dataset.helper);
     return;
   }
   if (action === "add-alt-zone") {
@@ -3463,6 +3513,14 @@ function addReceivedHelper(kind) {
   });
   toast(`${label} ${quantity}\uAC1C\uB97C \uAE30\uB85D\uD588\uC2B5\uB2C8\uB2E4.`);
 }
+async function applyZoneCorrection(zoneId) {
+  const kind = readZoneCorrectionKind(zoneId);
+  if (!kind) {
+    toast("\uC815\uC815 \uC885\uB958\uB97C \uC120\uD0DD\uD558\uC138\uC694.");
+    return;
+  }
+  await convertCompletedZoneToHelper(zoneId, kind);
+}
 async function convertCompletedZoneToHelper(zoneId, kind) {
   if (!currentDay) return;
   const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
@@ -3511,10 +3569,143 @@ async function convertCompletedZoneToHelper(zoneId, kind) {
   toast(`${label}\uC73C\uB85C \uC804\uD658\uD588\uC2B5\uB2C8\uB2E4.`);
   await saveAndRender();
 }
+async function saveHelperCorrection(helperId) {
+  if (!currentDay || !helperId) return;
+  const helper = currentDay.helpers.find((candidate) => candidate.id === helperId);
+  if (!helper) {
+    toast("\uC218\uC815\uD560 \uB3C4\uC6B0\uBBF8 \uAE30\uB85D\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+    return;
+  }
+  const kind = readHelperCorrectionKind(helperId);
+  const quantity = readHelperCorrectionQuantity(helperId);
+  const at = readHelperCorrectionAt(helperId);
+  if (!kind) {
+    toast("\uB3C4\uC6B0\uBBF8 \uC885\uB958\uB97C \uC120\uD0DD\uD558\uC138\uC694.");
+    return;
+  }
+  if (quantity <= 0) {
+    toast("\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC218\uB7C9\uC744 \uC785\uB825\uD558\uC138\uC694.");
+    return;
+  }
+  if (!at) {
+    toast("\uB3C4\uC6B0\uBBF8 \uAE30\uB85D \uC2DC\uAC01\uC744 \uC785\uB825\uD558\uC138\uC694.");
+    return;
+  }
+  const label = getHelperKindLabel(kind);
+  await downloadPreparedSnapshot("helper-correction-before", { kind: "date", date: currentDay.date });
+  const linkedIds = new Set(helper.linkedEventIds);
+  currentDay = {
+    ...currentDay,
+    timeline: currentDay.timeline.map((event) => {
+      if (event.type !== "helper_add" || !linkedIds.has(event.id)) return event;
+      const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+      return {
+        ...event,
+        at,
+        payload: {
+          ...payload,
+          name: label,
+          helperKind: kind,
+          quantity,
+          countsForEfficiency: kind === "paid_received"
+        }
+      };
+    }),
+    helpers: currentDay.helpers.map((candidate) => candidate.id === helperId ? {
+      ...candidate,
+      name: label,
+      kind,
+      quantity,
+      countsForEfficiency: kind === "paid_received",
+      memo: candidate.memo ? `${candidate.memo} / \uC7AC\uC218\uC815: ${label} ${quantity}\uAC1C` : `\uC7AC\uC218\uC815: ${label} ${quantity}\uAC1C`
+    } : candidate),
+    adjustments: [
+      ...currentDay.adjustments,
+      {
+        id: `helper-correction-${Date.now()}`,
+        eventId: helper.linkedEventIds[0],
+        reason: "helper_record_correction",
+        note: `${helper.name} -> ${label} ${quantity}\uAC1C`,
+        createdAt: nowIso()
+      }
+    ],
+    meta: {
+      ...currentDay.meta,
+      updatedAt: nowIso(),
+      recoveryStatus: currentDay.meta.recoveryStatus === "none" ? "needsReview" : currentDay.meta.recoveryStatus
+    }
+  };
+  toast(`${label} ${quantity}\uAC1C\uB85C \uB2E4\uC2DC \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.`);
+  await saveAndRender();
+}
+async function restoreHelperToZone(helperId) {
+  if (!currentDay || !helperId) return;
+  const helper = currentDay.helpers.find((candidate) => candidate.id === helperId);
+  if (!helper) {
+    toast("\uBCF5\uAD6C\uD560 \uB3C4\uC6B0\uBBF8 \uAE30\uB85D\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+    return;
+  }
+  const linkedIds = new Set(helper.linkedEventIds);
+  const event = currentDay.timeline.find((candidate) => candidate.type === "helper_add" && linkedIds.has(candidate.id));
+  const payload = event?.payload;
+  const quantity = typeof helper.quantity === "number" ? helper.quantity : typeof payload?.quantity === "number" ? payload.quantity : 0;
+  if (!event || quantity <= 0) {
+    toast("\uBCF5\uAD6C\uD560 \uC218\uB7C9 \uAE30\uB85D\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+    return;
+  }
+  const target = readHelperZoneRestoreTarget(helperId) ?? "alt";
+  const zoneId = createRestoredZoneId(target);
+  const zoneName = getRestoredZoneName(target);
+  if (!confirm(`${helper.name} ${quantity}\uAC1C\uB97C ${zoneName} \uAD6C\uC5ED \uAE30\uB85D\uC73C\uB85C \uBCF5\uAD6C\uD560\uAE4C\uC694? \uBCF5\uAD6C \uC804 \uBC31\uC5C5\uC744 \uBA3C\uC800 \uB9CC\uB4ED\uB2C8\uB2E4.`)) return;
+  await downloadPreparedSnapshot("helper-restore-before", { kind: "date", date: currentDay.date });
+  const startAt = addMinutes(event.at, -5);
+  const endAt = event.at;
+  currentDay = {
+    ...currentDay,
+    timeline: currentDay.timeline.filter((candidate) => !linkedIds.has(candidate.id)),
+    helpers: currentDay.helpers.filter((candidate) => candidate.id !== helperId),
+    adjustments: [
+      ...currentDay.adjustments,
+      {
+        id: `helper-restore-${Date.now()}`,
+        eventId: event.id,
+        reason: "helper_to_zone_restore",
+        note: `${helper.name} ${quantity}\uAC1C -> ${zoneName}`,
+        createdAt: nowIso()
+      }
+    ],
+    meta: {
+      ...currentDay.meta,
+      updatedAt: nowIso(),
+      recoveryStatus: "needsReview"
+    }
+  };
+  const zone = ensureZone(zoneId, zoneName, getNextZoneOrder());
+  currentDay = createEvent(currentDay, { type: "zone_start", zoneId: zone.id, at: startAt });
+  currentDay = createEvent(currentDay, { type: "delivery_start", zoneId: zone.id, at: startAt });
+  currentDay = createEvent(currentDay, {
+    type: "zone_end",
+    zoneId: zone.id,
+    at: endAt,
+    payload: {
+      delivered: quantity,
+      failed: 0,
+      extra: 0,
+      reviewedLater: true,
+      restoredFromHelperId: helperId
+    },
+    note: "\uB3C4\uC6B0\uBBF8 \uAE30\uB85D\uC5D0\uC11C \uAD6C\uC5ED\uC73C\uB85C \uBCF5\uAD6C\uB428. \uC2DC\uAC04/\uC0C1\uC138 \uAC80\uD1A0 \uD544\uC694."
+  });
+  normalizeZoneOrders();
+  toast(`${zoneName} ${quantity}\uAC1C \uAD6C\uC5ED \uAE30\uB85D\uC73C\uB85C \uBCF5\uAD6C\uD588\uC2B5\uB2C8\uB2E4. \uC2DC\uAC04\uC740 \uAC80\uD1A0 \uD544\uC694\uB85C \uB0A8\uACBC\uC2B5\uB2C8\uB2E4.`);
+  await saveAndRender();
+}
 function addReceivedHelperRecord(input) {
   if (!currentDay) return;
   const helperId = `helper-${input.kind}-${Date.now()}`;
+  const helperEventId = `helper-event-${input.kind}-${Date.now()}`;
   currentDay = createEvent(currentDay, {
+    id: helperEventId,
     type: "helper_add",
     at: input.at,
     payload: {
@@ -3533,7 +3724,7 @@ function addReceivedHelperRecord(input) {
     {
       id: helperId,
       name: input.name,
-      linkedEventIds: [currentDay.timeline.at(-1).id, ...input.previousEventIds ?? []],
+      linkedEventIds: [helperEventId, ...input.previousEventIds ?? []],
       memo: input.memo,
       kind: input.kind,
       quantity: input.quantity,
@@ -4089,6 +4280,20 @@ function getZoneName2(zoneId) {
 function getHelperKindLabel(kind) {
   return kind === "free_received" ? "\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC" : "\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC";
 }
+function normalizeReceivedHelperKind(value) {
+  if (value === "free_received" || value === "paid_received") return value;
+  return void 0;
+}
+function createRestoredZoneId(target) {
+  const safeTarget = ["miju", "hils", "alt", "custom"].includes(target) ? target : "alt";
+  return `${safeTarget}-restored-${Date.now()}`;
+}
+function getRestoredZoneName(target) {
+  if (target === "miju") return "\uBBF8\uC8FC";
+  if (target === "hils") return "\uD790\uC2A4\uD14C\uC774\uD2B8";
+  if (target === "custom") return "\uCD94\uAC00\uAD6C\uC5ED";
+  return "\uB300\uCCB4\uBC30\uC1A1";
+}
 function getDefaultZoneOrder(zoneId) {
   if (zoneId === "miju") return 1;
   if (zoneId === "hils") return 2;
@@ -4156,6 +4361,11 @@ function formatIsoForTimeInput(iso) {
   if (!iso) return "";
   const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? "" : formatTimeOnlyValue(parsed);
+}
+function formatIsoForInput(iso) {
+  if (!iso) return "";
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? "" : formatTimeInputValue(parsed);
 }
 function formatTimeInputValue(date) {
   const y = date.getFullYear();
@@ -4354,6 +4564,31 @@ function readText(selector, fallback) {
   const value = document.querySelector(selector)?.value.trim();
   return value || fallback;
 }
+function readZoneCorrectionKind(zoneId) {
+  const select = Array.from(document.querySelectorAll("select[data-zone-correction]")).find((candidate) => candidate.dataset.zoneCorrection === zoneId);
+  return normalizeReceivedHelperKind(select?.value);
+}
+function readHelperCorrectionKind(helperId) {
+  const select = Array.from(document.querySelectorAll("select[data-helper-kind]")).find((candidate) => candidate.dataset.helperKind === helperId);
+  return normalizeReceivedHelperKind(select?.value);
+}
+function readHelperCorrectionQuantity(helperId) {
+  const input = Array.from(document.querySelectorAll("input[data-helper-quantity]")).find((candidate) => candidate.dataset.helperQuantity === helperId);
+  const cleaned = (input?.value ?? "").replace(/\D/g, "").slice(0, 3);
+  if (input && input.value !== cleaned) input.value = cleaned;
+  const value = parseInt(cleaned, 10);
+  return Number.isFinite(value) ? value : 0;
+}
+function readHelperCorrectionAt(helperId) {
+  const input = Array.from(document.querySelectorAll("input[data-helper-at]")).find((candidate) => candidate.dataset.helperAt === helperId);
+  if (!input?.value) return void 0;
+  const parsed = new Date(input.value);
+  return Number.isNaN(parsed.getTime()) ? void 0 : parsed.toISOString();
+}
+function readHelperZoneRestoreTarget(helperId) {
+  const select = Array.from(document.querySelectorAll("select[data-helper-zone-restore]")).find((candidate) => candidate.dataset.helperZoneRestore === helperId);
+  return select?.value;
+}
 function formatTime(iso) {
   return new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
@@ -4373,6 +4608,9 @@ function formatDuration(value) {
 }
 function escapeHtml(value) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll('"', "&quot;");
 }
 function toast(message) {
   const el = document.createElement("div");

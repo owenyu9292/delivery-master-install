@@ -613,21 +613,72 @@ function renderRecordCorrectionPanel(): string {
       return { zone, delivered, end };
     })
     .filter((item) => item.end && item.delivered > 0);
+  const helpers = currentDay.helpers
+    .map((helper) => {
+      const event = currentDay?.timeline.find((candidate) =>
+        candidate.type === "helper_add" && helper.linkedEventIds.includes(candidate.id)
+      );
+      const payload = event?.payload as Record<string, unknown> | undefined;
+      const kind = normalizeReceivedHelperKind(helper.kind ?? payload?.helperKind);
+      const quantity = typeof helper.quantity === "number"
+        ? helper.quantity
+        : typeof payload?.quantity === "number"
+          ? payload.quantity
+          : 0;
+      return { helper, event, kind, quantity };
+    })
+    .filter((item) => item.event && item.kind && item.quantity > 0);
 
   return `
     <section class="record-correction">
       <h3>기록 정정</h3>
-      <p class="hint">로그 화면은 보기 전용입니다. 잘못 완료한 구역을 여기서 도우미 배송으로 전환합니다.</p>
-      ${completed.length === 0 ? `<p class="empty-state">전환할 완료 구역이 없습니다.</p>` : `
+      <p class="hint">로그 화면은 보기 전용입니다. 잘못 누른 기록은 여기서 다시 고칩니다. 도우미 무료/유료는 여러 번 재수정할 수 있습니다.</p>
+      ${completed.length === 0 && helpers.length === 0 ? `<p class="empty-state">정정할 기록이 없습니다.</p>` : ""}
+      ${completed.length === 0 ? "" : `
         <div class="correction-list">
           ${completed.map(({ zone, delivered }) => `
             <article>
               <strong>${escapeHtml(zone.name)}</strong>
-              <p>${delivered}개 · ${zone.order}구역</p>
-              <div class="segmented">
-                <button data-action="convert-zone-helper-free" data-zone="${zone.id}">도우미 무료로 전환</button>
-                <button data-action="convert-zone-helper-paid" data-zone="${zone.id}">도우미 유료로 전환</button>
-              </div>
+              <p>${delivered}개 · ${zone.order}구역 완료 기록</p>
+              <label>정정 종류
+                <select data-zone-correction="${escapeAttribute(zone.id)}">
+                  <option value="free_received">도우미 배송 무료로 전환</option>
+                  <option value="paid_received">도우미 배송 유료로 전환</option>
+                </select>
+              </label>
+              <button data-action="apply-zone-correction" data-zone="${escapeAttribute(zone.id)}">정정 저장</button>
+            </article>
+          `).join("")}
+        </div>
+      `}
+      ${helpers.length === 0 ? "" : `
+        <div class="correction-list">
+          ${helpers.map(({ helper, event, kind, quantity }) => `
+            <article>
+              <strong>${escapeHtml(helper.name)}</strong>
+              <p>${quantity}개 · ${kind === "free_received" ? "효율 제외" : "효율 포함"}</p>
+              <label>도우미 종류
+                <select data-helper-kind="${escapeAttribute(helper.id)}">
+                  <option value="free_received"${kind === "free_received" ? " selected" : ""}>도우미 배송 무료</option>
+                  <option value="paid_received"${kind === "paid_received" ? " selected" : ""}>도우미 배송 유료</option>
+                </select>
+              </label>
+              <label>수량
+                <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity}">
+              </label>
+              <label>시각
+                <input data-helper-at="${escapeAttribute(helper.id)}" type="datetime-local" value="${formatIsoForInput(event!.at)}">
+              </label>
+              <button data-action="save-helper-correction" data-helper="${escapeAttribute(helper.id)}">도우미 기록 수정 저장</button>
+              <label>구역으로 되돌리기
+                <select data-helper-zone-restore="${escapeAttribute(helper.id)}">
+                  <option value="alt">대체배송</option>
+                  <option value="hils">힐스테이트</option>
+                  <option value="miju">미주</option>
+                  <option value="custom">추가구역</option>
+                </select>
+              </label>
+              <button data-action="restore-helper-zone" data-helper="${escapeAttribute(helper.id)}">구역 기록으로 복구</button>
             </article>
           `).join("")}
         </div>
@@ -1214,10 +1265,11 @@ function formatBucketShortLabel(key: ZoneQuantityComparison["buckets"][number]["
 }
 
 function getZoneBucket(dayRecord: DayRecord, zoneId: string): ZoneQuantityComparison["buckets"][number]["key"] {
-  if (zoneId === "miju") return "miju";
-  if (zoneId === "hils") return "hils";
+  const id = zoneId.toLowerCase();
   const name = getZoneNameFromDay(dayRecord, zoneId);
-  return name.includes("힐스") ? "hils" : "alternate";
+  if (id === "miju" || id.includes("miju") || name.includes("미주")) return "miju";
+  if (id === "hils" || id.includes("hils") || name.includes("힐스")) return "hils";
+  return "alternate";
 }
 
 function getZoneNameFromDay(dayRecord: DayRecord, zoneId: string): string {
@@ -1505,12 +1557,16 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     await saveAndRender();
     return;
   }
-  if (action === "convert-zone-helper-free" && zoneId) {
-    await convertCompletedZoneToHelper(zoneId, "free_received");
+  if (action === "apply-zone-correction" && zoneId) {
+    await applyZoneCorrection(zoneId);
     return;
   }
-  if (action === "convert-zone-helper-paid" && zoneId) {
-    await convertCompletedZoneToHelper(zoneId, "paid_received");
+  if (action === "save-helper-correction") {
+    await saveHelperCorrection(button.dataset.helper);
+    return;
+  }
+  if (action === "restore-helper-zone") {
+    await restoreHelperToZone(button.dataset.helper);
     return;
   }
   if (action === "add-alt-zone") {
@@ -1722,6 +1778,15 @@ function addReceivedHelper(kind: "free_received" | "paid_received"): void {
   toast(`${label} ${quantity}개를 기록했습니다.`);
 }
 
+async function applyZoneCorrection(zoneId: string): Promise<void> {
+  const kind = readZoneCorrectionKind(zoneId);
+  if (!kind) {
+    toast("정정 종류를 선택하세요.");
+    return;
+  }
+  await convertCompletedZoneToHelper(zoneId, kind);
+}
+
 async function convertCompletedZoneToHelper(zoneId: string, kind: "free_received" | "paid_received"): Promise<void> {
   if (!currentDay) return;
   const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
@@ -1773,6 +1838,145 @@ async function convertCompletedZoneToHelper(zoneId: string, kind: "free_received
   await saveAndRender();
 }
 
+async function saveHelperCorrection(helperId?: string): Promise<void> {
+  if (!currentDay || !helperId) return;
+  const helper = currentDay.helpers.find((candidate) => candidate.id === helperId);
+  if (!helper) {
+    toast("수정할 도우미 기록을 찾지 못했습니다.");
+    return;
+  }
+  const kind = readHelperCorrectionKind(helperId);
+  const quantity = readHelperCorrectionQuantity(helperId);
+  const at = readHelperCorrectionAt(helperId);
+  if (!kind) {
+    toast("도우미 종류를 선택하세요.");
+    return;
+  }
+  if (quantity <= 0) {
+    toast("도우미 배송 수량을 입력하세요.");
+    return;
+  }
+  if (!at) {
+    toast("도우미 기록 시각을 입력하세요.");
+    return;
+  }
+  const label = getHelperKindLabel(kind);
+  await downloadPreparedSnapshot("helper-correction-before", { kind: "date", date: currentDay.date });
+  const linkedIds = new Set(helper.linkedEventIds);
+  currentDay = {
+    ...currentDay,
+    timeline: currentDay.timeline.map((event) => {
+      if (event.type !== "helper_add" || !linkedIds.has(event.id)) return event;
+      const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+      return {
+        ...event,
+        at,
+        payload: {
+          ...payload,
+          name: label,
+          helperKind: kind,
+          quantity,
+          countsForEfficiency: kind === "paid_received",
+        },
+      };
+    }),
+    helpers: currentDay.helpers.map((candidate) => candidate.id === helperId
+      ? {
+          ...candidate,
+          name: label,
+          kind,
+          quantity,
+          countsForEfficiency: kind === "paid_received",
+          memo: candidate.memo ? `${candidate.memo} / 재수정: ${label} ${quantity}개` : `재수정: ${label} ${quantity}개`,
+        }
+      : candidate),
+    adjustments: [
+      ...currentDay.adjustments,
+      {
+        id: `helper-correction-${Date.now()}`,
+        eventId: helper.linkedEventIds[0],
+        reason: "helper_record_correction",
+        note: `${helper.name} -> ${label} ${quantity}개`,
+        createdAt: nowIso(),
+      },
+    ],
+    meta: {
+      ...currentDay.meta,
+      updatedAt: nowIso(),
+      recoveryStatus: currentDay.meta.recoveryStatus === "none" ? "needsReview" : currentDay.meta.recoveryStatus,
+    },
+  };
+  toast(`${label} ${quantity}개로 다시 저장했습니다.`);
+  await saveAndRender();
+}
+
+async function restoreHelperToZone(helperId?: string): Promise<void> {
+  if (!currentDay || !helperId) return;
+  const helper = currentDay.helpers.find((candidate) => candidate.id === helperId);
+  if (!helper) {
+    toast("복구할 도우미 기록을 찾지 못했습니다.");
+    return;
+  }
+  const linkedIds = new Set(helper.linkedEventIds);
+  const event = currentDay.timeline.find((candidate) => candidate.type === "helper_add" && linkedIds.has(candidate.id));
+  const payload = event?.payload as Record<string, unknown> | undefined;
+  const quantity = typeof helper.quantity === "number"
+    ? helper.quantity
+    : typeof payload?.quantity === "number"
+      ? payload.quantity
+      : 0;
+  if (!event || quantity <= 0) {
+    toast("복구할 수량 기록을 찾지 못했습니다.");
+    return;
+  }
+  const target = readHelperZoneRestoreTarget(helperId) ?? "alt";
+  const zoneId = createRestoredZoneId(target);
+  const zoneName = getRestoredZoneName(target);
+  if (!confirm(`${helper.name} ${quantity}개를 ${zoneName} 구역 기록으로 복구할까요? 복구 전 백업을 먼저 만듭니다.`)) return;
+  await downloadPreparedSnapshot("helper-restore-before", { kind: "date", date: currentDay.date });
+  const startAt = addMinutes(event.at, -5);
+  const endAt = event.at;
+  currentDay = {
+    ...currentDay,
+    timeline: currentDay.timeline.filter((candidate) => !linkedIds.has(candidate.id)),
+    helpers: currentDay.helpers.filter((candidate) => candidate.id !== helperId),
+    adjustments: [
+      ...currentDay.adjustments,
+      {
+        id: `helper-restore-${Date.now()}`,
+        eventId: event.id,
+        reason: "helper_to_zone_restore",
+        note: `${helper.name} ${quantity}개 -> ${zoneName}`,
+        createdAt: nowIso(),
+      },
+    ],
+    meta: {
+      ...currentDay.meta,
+      updatedAt: nowIso(),
+      recoveryStatus: "needsReview",
+    },
+  };
+  const zone = ensureZone(zoneId, zoneName, getNextZoneOrder());
+  currentDay = createEvent(currentDay, { type: "zone_start", zoneId: zone.id, at: startAt });
+  currentDay = createEvent(currentDay, { type: "delivery_start", zoneId: zone.id, at: startAt });
+  currentDay = createEvent(currentDay, {
+    type: "zone_end",
+    zoneId: zone.id,
+    at: endAt,
+    payload: {
+      delivered: quantity,
+      failed: 0,
+      extra: 0,
+      reviewedLater: true,
+      restoredFromHelperId: helperId,
+    },
+    note: "도우미 기록에서 구역으로 복구됨. 시간/상세 검토 필요.",
+  });
+  normalizeZoneOrders();
+  toast(`${zoneName} ${quantity}개 구역 기록으로 복구했습니다. 시간은 검토 필요로 남겼습니다.`);
+  await saveAndRender();
+}
+
 function addReceivedHelperRecord(input: {
   kind: "free_received" | "paid_received";
   quantity: number;
@@ -1784,7 +1988,9 @@ function addReceivedHelperRecord(input: {
 }): void {
   if (!currentDay) return;
   const helperId = `helper-${input.kind}-${Date.now()}`;
+  const helperEventId = `helper-event-${input.kind}-${Date.now()}`;
   currentDay = createEvent(currentDay, {
+    id: helperEventId,
     type: "helper_add",
     at: input.at,
     payload: {
@@ -1803,7 +2009,7 @@ function addReceivedHelperRecord(input: {
     {
       id: helperId,
       name: input.name,
-      linkedEventIds: [currentDay.timeline.at(-1)!.id, ...(input.previousEventIds ?? [])],
+      linkedEventIds: [helperEventId, ...(input.previousEventIds ?? [])],
       memo: input.memo,
       kind: input.kind,
       quantity: input.quantity,
@@ -2468,6 +2674,23 @@ function getHelperKindLabel(kind: "free_received" | "paid_received"): string {
   return kind === "free_received" ? "도우미 배송 무료" : "도우미 배송 유료";
 }
 
+function normalizeReceivedHelperKind(value: unknown): "free_received" | "paid_received" | undefined {
+  if (value === "free_received" || value === "paid_received") return value;
+  return undefined;
+}
+
+function createRestoredZoneId(target: string): string {
+  const safeTarget = ["miju", "hils", "alt", "custom"].includes(target) ? target : "alt";
+  return `${safeTarget}-restored-${Date.now()}`;
+}
+
+function getRestoredZoneName(target: string): string {
+  if (target === "miju") return "미주";
+  if (target === "hils") return "힐스테이트";
+  if (target === "custom") return "추가구역";
+  return "대체배송";
+}
+
 function getDefaultZoneOrder(zoneId: string): number {
   if (zoneId === "miju") return 1;
   if (zoneId === "hils") return 2;
@@ -2810,6 +3033,41 @@ function readText(selector: string, fallback: string): string {
   return value || fallback;
 }
 
+function readZoneCorrectionKind(zoneId: string): "free_received" | "paid_received" | undefined {
+  const select = Array.from(document.querySelectorAll<HTMLSelectElement>("select[data-zone-correction]"))
+    .find((candidate) => candidate.dataset.zoneCorrection === zoneId);
+  return normalizeReceivedHelperKind(select?.value);
+}
+
+function readHelperCorrectionKind(helperId: string): "free_received" | "paid_received" | undefined {
+  const select = Array.from(document.querySelectorAll<HTMLSelectElement>("select[data-helper-kind]"))
+    .find((candidate) => candidate.dataset.helperKind === helperId);
+  return normalizeReceivedHelperKind(select?.value);
+}
+
+function readHelperCorrectionQuantity(helperId: string): number {
+  const input = Array.from(document.querySelectorAll<HTMLInputElement>("input[data-helper-quantity]"))
+    .find((candidate) => candidate.dataset.helperQuantity === helperId);
+  const cleaned = (input?.value ?? "").replace(/\D/g, "").slice(0, 3);
+  if (input && input.value !== cleaned) input.value = cleaned;
+  const value = parseInt(cleaned, 10);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function readHelperCorrectionAt(helperId: string): string | undefined {
+  const input = Array.from(document.querySelectorAll<HTMLInputElement>("input[data-helper-at]"))
+    .find((candidate) => candidate.dataset.helperAt === helperId);
+  if (!input?.value) return undefined;
+  const parsed = new Date(input.value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function readHelperZoneRestoreTarget(helperId: string): string | undefined {
+  const select = Array.from(document.querySelectorAll<HTMLSelectElement>("select[data-helper-zone-restore]"))
+    .find((candidate) => candidate.dataset.helperZoneRestore === helperId);
+  return select?.value;
+}
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
@@ -2833,6 +3091,10 @@ function formatDuration(value?: number): string {
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value).replaceAll('"', "&quot;");
 }
 
 function toast(message: string): void {

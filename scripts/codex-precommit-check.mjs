@@ -4,7 +4,7 @@ import path from "node:path";
 
 const args = new Set(process.argv.slice(2));
 const stagedOnly = args.has("--staged");
-const expectedRootName = "delivery-master-install";
+const expectedRootNames = new Set(["delivery-master-install-deploy"]);
 const forbiddenPathPattern = /OneDrive|Downloads|Desktop|\.codex-remote-attachments/i;
 const secretPattern = /(api[_-]?key|secret|password|passwd|token)\s*[:=]\s*[^\s]{8,}|authorization:\s*bearer\s+[A-Za-z0-9._-]{20,}|bearer\s+[A-Za-z0-9._-]{20,}/i;
 const textLikePattern = /\.(md|txt|json|ts|tsx|js|mjs|cjs|css|html|svg|webmanifest|yml|yaml|ps1|sh)$/i;
@@ -33,8 +33,8 @@ if (forbiddenPathPattern.test(root)) {
   fail(`repository path is forbidden: ${root}`);
 }
 
-if (path.basename(normalizedRoot) !== expectedRootName) {
-  fail(`expected source repo folder '${expectedRootName}', got: ${root}`);
+if (!expectedRootNames.has(path.basename(normalizedRoot))) {
+  fail(`expected source repo folder '${[...expectedRootNames].join("' or '")}', got: ${root}`);
 }
 
 if (!existsSync(path.join(root, "instruction.md")) || !existsSync(path.join(root, "progress.md")) || !existsSync(path.join(root, "changelog.md"))) {

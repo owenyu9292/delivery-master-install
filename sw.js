@@ -1,4 +1,4 @@
-const CACHE_NAME = "delivery-master-install-v14";
+const CACHE_NAME = "delivery-master-install-v15";
 const ASSETS = [
   "./",
   "./index.html",

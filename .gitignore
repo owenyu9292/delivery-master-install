@@ -1,5 +1,6 @@
 node_modules/
 .chrome-review/
+.chrome-smoke/
 dist/
 current-source/
 *.log

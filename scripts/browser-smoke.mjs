@@ -1,4 +1,4 @@
-const base = "http://localhost:4173";
+const base = process.env.SMOKE_BASE || "http://localhost:4173";
 const cdpPort = Number(process.env.CDP_PORT || 9223);
 const phoneViewport = {
   width: Number(process.env.SMOKE_WIDTH || 411),
@@ -77,6 +77,45 @@ async function setValue(selector, value) {
 
 async function bodyText() {
   return evaluate("document.body.innerText");
+}
+
+async function chooseCompletedZoneCorrection(zoneName, kind) {
+  return evaluate(`(() => {
+    const selects = [...document.querySelectorAll("select[data-zone-correction]")]
+      .filter((select) => select.closest("article")?.innerText.includes(${JSON.stringify(zoneName)}));
+    const select = selects.at(-1);
+    if (!select) return "";
+    select.value = ${JSON.stringify(kind)};
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    return select.dataset.zoneCorrection || "";
+  })()`);
+}
+
+async function latestHelperId() {
+  return evaluate(`(() => {
+    const buttons = [...document.querySelectorAll('[data-action="save-helper-correction"][data-helper]')];
+    return buttons.at(-1)?.dataset.helper || "";
+  })()`);
+}
+
+async function setHelperKind(helperId, kind) {
+  return evaluate(`(() => {
+    const select = document.querySelector(${JSON.stringify(`select[data-helper-kind="${helperId}"]`)});
+    if (!select) return false;
+    select.value = ${JSON.stringify(kind)};
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+}
+
+async function setHelperRestoreTarget(helperId, target) {
+  return evaluate(`(() => {
+    const select = document.querySelector(${JSON.stringify(`select[data-helper-zone-restore="${helperId}"]`)});
+    if (!select) return false;
+    select.value = ${JSON.stringify(target)};
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
 }
 
 function wait(ms = 250) {
@@ -279,12 +318,21 @@ const backupText = await bodyText();
 
 await click('[data-action="reset-confirm"]');
 await wait(400);
+await click('[data-action="set-tab"][data-tab="work"]');
+await wait();
 await setValue("#expected-count", "100");
 await click('[data-action="depart"]');
 await wait();
 await click('[data-action="arrive"]');
 await wait();
 await click('[data-action="prepare-default-order"]');
+await wait();
+await setValue("#custom-zone-name", "상가 추가");
+await click('[data-action="add-custom-zone-to-order"]');
+await wait();
+await click('[data-action="move-zone-down"][data-zone="miju"]');
+await wait();
+await click('[data-action="move-zone-down"][data-zone="miju"]');
 await wait();
 await click('[data-action="move-zone-down"][data-zone="miju"]');
 await wait();
@@ -314,14 +362,14 @@ if (altZoneId) {
   await wait(500);
 }
 const afterDirectAlt = await bodyText();
-await click('[data-action="add-custom-zone"]');
-await wait();
 const customZoneId = await evaluate(`(() => {
-  const button = [...document.querySelectorAll('[data-action="delivery-start"]')]
-    .find((item) => item.dataset.zone && item.dataset.zone !== "hils");
+  const button = [...document.querySelectorAll('[data-action="zone-start"]')]
+    .find((item) => item.textContent.includes("상가 추가"));
   return button?.dataset.zone || "";
 })()`);
 if (customZoneId) {
+  await click(`[data-action="zone-start"][data-zone="${customZoneId}"]`);
+  await wait();
   await click(`[data-action="delivery-start"][data-zone="${customZoneId}"]`);
   await wait();
   await setValue("#extra-count", "5");
@@ -329,6 +377,48 @@ if (customZoneId) {
   await wait(500);
 }
 const afterDirectCustom = await bodyText();
+
+await click('[data-action="set-tab"][data-tab="backup"]');
+await wait();
+const selectedAltForPaid = await chooseCompletedZoneCorrection("대체배송", "paid_received");
+if (selectedAltForPaid) await click(`[data-action="apply-zone-correction"][data-zone="${selectedAltForPaid}"]`);
+await wait(900);
+const afterAltToPaidHelper = await bodyText();
+const helperIdAfterPaid = await latestHelperId();
+if (helperIdAfterPaid) {
+  await setHelperKind(helperIdAfterPaid, "free_received");
+  await click(`[data-action="save-helper-correction"][data-helper="${helperIdAfterPaid}"]`);
+  await wait(900);
+}
+const afterPaidToFreeHelper = await bodyText();
+if (helperIdAfterPaid) {
+  await setHelperRestoreTarget(helperIdAfterPaid, "alt");
+  await click(`[data-action="restore-helper-zone"][data-helper="${helperIdAfterPaid}"]`);
+  await wait(900);
+}
+const afterHelperRestoredToAlt = await bodyText();
+
+const selectedAltAgain = await chooseCompletedZoneCorrection("대체배송", "paid_received");
+if (selectedAltAgain) await click(`[data-action="apply-zone-correction"][data-zone="${selectedAltAgain}"]`);
+await wait(900);
+const helperIdForHilsRestore = await latestHelperId();
+if (helperIdForHilsRestore) {
+  await setHelperRestoreTarget(helperIdForHilsRestore, "hils");
+  await click(`[data-action="restore-helper-zone"][data-helper="${helperIdForHilsRestore}"]`);
+  await wait(900);
+}
+const afterHelperRestoredToHils = await bodyText();
+
+const selectedHilsForHelper = await chooseCompletedZoneCorrection("힐스테이트", "free_received");
+if (selectedHilsForHelper) await click(`[data-action="apply-zone-correction"][data-zone="${selectedHilsForHelper}"]`);
+await wait(900);
+const helperIdForMijuRestore = await latestHelperId();
+if (helperIdForMijuRestore) {
+  await setHelperRestoreTarget(helperIdForMijuRestore, "miju");
+  await click(`[data-action="restore-helper-zone"][data-helper="${helperIdForMijuRestore}"]`);
+  await wait(900);
+}
+const afterHelperRestoredToMiju = await bodyText();
 
 await evaluate("window.confirm = (message) => { window.__lastConfirm = message; return false; }");
 await setValue("#hils-count", "999");
@@ -379,7 +469,12 @@ const result = {
   missingQuantityBlocked: !afterMissing.includes("힐스테이트 | 완료"),
   directHilsFirstComplete: afterDirectHils.includes("힐스테이트") && afterDirectHils.includes("수량 13개"),
   directAlternateComplete: afterDirectAlt.includes("대체배송") && afterDirectAlt.includes("수량 7개"),
-  directCustomComplete: afterDirectCustom.includes("추가 구역") && afterDirectCustom.includes("수량 5개"),
+  directCustomComplete: afterDirectCustom.includes("상가 추가") && afterDirectCustom.includes("수량 5개"),
+  correctionAltToPaidHelper: afterAltToPaidHelper.includes("도우미 배송 유료") && afterAltToPaidHelper.includes("7개"),
+  correctionPaidToFreeHelper: afterPaidToFreeHelper.includes("도우미 배송 무료") && afterPaidToFreeHelper.includes("효율 제외"),
+  correctionHelperRestoredToAlt: afterHelperRestoredToAlt.includes("대체배송") && afterHelperRestoredToAlt.includes("구역 기록으로 복구"),
+  correctionHelperRestoredToHils: afterHelperRestoredToHils.includes("힐스테이트") && afterHelperRestoredToHils.includes("구역 기록으로 복구"),
+  correctionHelperRestoredToMiju: afterHelperRestoredToMiju.includes("미주") && afterHelperRestoredToMiju.includes("구역 기록으로 복구"),
   hugeQuantityBlockedOrWarned: !afterHuge.includes("수량 999개"),
   screenshotName,
   hugeConfirm,

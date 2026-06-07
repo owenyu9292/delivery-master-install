@@ -13,9 +13,8 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - Season2 PWA는 보관/원본 백업 앱이며, 현재 핫픽스 대상이 아니다.
 - `C:\Codex55Workspace\delivery-master\season2`는 건드리지 않는다.
 - `SEASON2_SAFETY_PLAN.md`, `season2/README.md`는 잘못 수정됐다가 복구 완료된 상태다.
-- 현재 기준 배포 버전은 **v14**다.
-- 최신 커밋은 `650be6a Restore install source and fix helper zone totals`이다.
-- live `sw.js`에서 `delivery-master-install-v14` 반영까지 확인됐다.
+- 현재 기준 배포 버전은 **v15**다.
+- live `sw.js`에서 `delivery-master-install-v15` 반영 여부를 먼저 확인한다.
 
 ## 0-1. 핫픽스 채널 운영 목적
 
@@ -27,6 +26,26 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - 핫픽스는 정식 설계 완료가 아니다. 막은 내용과 남은 정식 수정 항목을 이 문서에 짧게 남기고, 퇴근 후 일반 작업창에서 정식 수정한다.
 - 대화량을 늘리는 긴 설명, 전체 로그 덤프, 반복 질문은 피한다.
 - 새 핫픽스 결과는 이 문서에 짧게 갱신해 다음 핫픽스 창도 같은 기준으로 시작하게 한다.
+- 최신 업데이트 기록은 최대 5개만 유지한다.
+- 6개째 업데이트를 추가할 때는 가장 오래된 업데이트 항목을 삭제하고 최신 5개만 남긴다.
+- 핫픽스 채널은 가벼워야 하므로 오래된 회고, 긴 로그, 세부 검수 출력은 `progress.md`와 `changelog.md`에 남긴다.
+
+## 0-2. 최근 핫픽스 업데이트: 최신 5개만 유지
+
+1. v15 `record-correction-rework`
+   - 기록 정정을 단발 전환에서 반복 재수정 구조로 변경.
+   - 완료 구역 -> 도우미 무료/유료 전환, 도우미 무료/유료/수량/시각 재수정, 도우미 -> 대체배송/힐스테이트/미주/추가구역 복구 반영.
+   - 도우미 전환 이벤트 ID를 타임라인 마지막 이벤트로 잘못 연결하던 문제 수정.
+   - 브라우저 검수 411x762 / DPR 2.63 전체 통과.
+2. v14 `helper-zone-totals`
+   - 구역 순서 기준 수량 계산과 도우미 배송 무료/유료 계산 반영.
+   - 백업설정 기록 정정 1차 반영.
+3. v13 `direct-delivery-hotfix`
+   - 미주 외 구역에서 바로 배송 시작 루트도 정리 완료 없이 완료 저장 가능하게 수정.
+4. v12 `field-final-polish`
+   - 정리 완료 버튼 순서와 주간/월간 비율 배지 보정.
+5. v11 `field-fold-cover`
+   - 갤럭시 폴드 앞 화면 411x762 / DPR 2.63 검수 기준 반영.
 
 ## 1. 현재 실제 배포 앱 위치
 
@@ -84,7 +103,23 @@ current-source\docs\hotfixes\
 - 새 대화창에서는 `current-source`를 원본으로 삼지 않는다.
 - 이 폴더는 이관 정리 전까지 남겨 두는 격리 참고자료이며, 배포 대상이 아니다.
 
-## 3. v14에 실제 반영된 최신 수정
+## 3. v15에 실제 반영된 최신 수정
+
+### 3-0. v15 기록 정정 재수정
+
+목적:
+
+- 현장에서 잘못 누른 도우미 무료/유료, 대체배송/추가구역 전환 실수를 반복 수정할 수 있게 한다.
+- 로그 화면은 보기 전용으로 유지한다.
+- 정정은 `백업설정 > 기록 정정`에서 처리한다.
+
+v15 실제 배포 앱에 반영된 구현:
+
+- 완료 구역을 도우미 배송 무료/유료로 전환
+- 도우미 배송 무료/유료/수량/시각 재수정
+- 도우미 배송을 대체배송/힐스테이트/미주/추가구역 기록으로 복구
+- 복구된 미주/힐스테이트 구역도 주간/월간 비율 통계에서 올바르게 분류
+- 도우미 전환 시 새 이벤트 ID를 명시 연결해 재수정 카드가 사라지는 문제 방지
 
 ### 3-1. 기록 정정
 
@@ -94,7 +129,7 @@ current-source\docs\hotfixes\
 - 로그 화면은 보기 전용으로 유지하고 지저분하게 만들지 않는다.
 - 수정 기능은 설정 화면의 별도 관리 섹션에서 처리한다.
 
-v14 실제 배포 앱에 반영된 구현:
+v14부터 실제 배포 앱에 반영된 구현:
 
 - `백업설정` 화면에 `기록 정정` 섹션 추가
 - 완료 구역 목록 표시
@@ -135,8 +170,9 @@ v14 실제 배포 앱에 반영된 계산 원칙:
 
 - `npm run check`: 48/48 통과
 - `npm run build`: 통과
-- `assets/app.js`, `assets/app.js.map`, `sw.js`가 `dist` 산출물과 해시 일치
-- live `sw.js`: `const CACHE_NAME = "delivery-master-install-v14";` 확인
+- 브라우저 스모크 검수: 411x762 / DPR 2.63 전체 true
+- 추가 검수 항목: 힐스 첫 구역 직접배송, 대체배송 직접배송, 추가구역 직접배송, 대체배송 -> 도우미 유료, 도우미 유료 -> 무료, 도우미 -> 대체배송/힐스테이트/미주 복구
+- `assets/app.js`, `assets/app.js.map`, `sw.js`는 배포 전 `dist` 산출물과 해시 일치 여부를 확인한다.
 
 ## 4. 오늘 확인된 필드 버그/요구사항
 
@@ -180,7 +216,7 @@ v14 실제 배포 앱에 반영된 계산 원칙:
 - 대체배송/추가구역 -> 도우미 무료/유료 전환
 - 수정 전 자동 스냅샷
 - 수정 후 리포트/통계 재계산
-- 상태: 도우미 무료/유료 전환은 v14 반영 완료. 구역명/타입/수량/시간 일반 수정 확장은 후속 검토 대상이다.
+- 상태: 도우미 무료/유료 전환과 도우미 재수정/구역 복구는 v15 반영 완료. 구역명/타입/수량/시간 일반 수정 확장은 후속 검토 대상이다.
 
 ## 5. 새 대화창에서 첫 번째로 할 일
 
@@ -193,7 +229,7 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy
 
 3. 이 폴더의 `src` 원본과 빌드 설정을 확인한다.
 4. 이전 원본 폴더 `C:\#WORKSPACE\AI_HUB\AI_WORKSPACE\PROJECTS\delivery-master-install`는 참고/비상 확인용일 뿐, 새 작업 기준으로 쓰지 않는다.
-5. v14 이후 새 핫픽스는 이관된 `src`에 반영하고 빌드한다.
+5. v15 이후 새 핫픽스는 이관된 `src`에 반영하고 빌드한다.
 6. 빌드 결과를 루트 게시 파일에 반영하기 전 결과를 보고한다.
 7. 절대 `current-source`를 실제 배포 앱으로 덮어쓰지 않는다.
 
@@ -207,8 +243,8 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - 이전 원본 폴더의 src는 이 폴더로 이관된 기준으로 작업한다.
 - current-source는 참고 스냅샷이지 원본이나 배포 대상이 아니다.
 - Season2는 보관용 원본이라 건드리지 않는다.
-- v14에는 구역 순서 수량 계산, 도우미 배송 무료/유료, 백업설정 기록 정정이 이미 반영되어 있다.
-- 목표는 v14 이후 새 필드 버그만 이 기준 위에서 핫픽스하는 것이다.
+- v15에는 구역 순서 수량 계산, 도우미 배송 무료/유료, 백업설정 기록 정정 재수정/복구가 이미 반영되어 있다.
+- 목표는 v15 이후 새 필드 버그만 이 기준 위에서 핫픽스하는 것이다.
 - 먼저 이 폴더의 src 원본과 빌드 설정이 존재하는지 확인해.
 ```
 
@@ -216,11 +252,10 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 
 `delivery-master-install-deploy` 내부:
 
-- v14 기준 커밋/푸시 완료
-- 최신 커밋: `650be6a Restore install source and fix helper zone totals`
+- v15 기준 커밋/푸시 완료 여부는 `git log -1 --oneline`과 live `sw.js`로 확인한다.
 - 이전 원본 `src`/설정/문서 이관 완료
 - `current-source/`는 `.gitignore`로 제외된 참고 스냅샷
-- live `sw.js`의 캐시명 `delivery-master-install-v14` 확인 완료
+- live `sw.js`의 캐시명 `delivery-master-install-v15` 확인 필요
 
 상위 `delivery-master` 쪽:
 
