@@ -79,19 +79,33 @@ async function bodyText() {
   return evaluate("document.body.innerText");
 }
 
-async function chooseCompletedZoneCorrection(zoneName, kind) {
+async function selectCorrectionTarget(labelFragment) {
   return evaluate(`(() => {
-    const selects = [...document.querySelectorAll("select[data-zone-correction]")]
-      .filter((select) => select.closest("article")?.innerText.includes(${JSON.stringify(zoneName)}));
-    const select = selects.at(-1);
+    const select = document.querySelector("#correction-target");
     if (!select) return "";
-    select.value = ${JSON.stringify(kind)};
+    const option = [...select.options].find((candidate) => candidate.textContent.includes(${JSON.stringify(labelFragment)}));
+    if (!option) return "";
+    select.value = option.value;
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    return select.dataset.zoneCorrection || "";
+    return option.value;
   })()`);
 }
 
-async function latestHelperId() {
+async function setSelectedZoneCorrectionKind(kind) {
+  return evaluate(`(() => {
+    const select = document.querySelector("#correction-zone-kind");
+    if (!select) return false;
+    select.value = ${JSON.stringify(kind)};
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+}
+
+async function setSelectedZoneCorrectionName(name) {
+  return setValue("#correction-zone-name", name);
+}
+
+async function activeHelperId() {
   return evaluate(`(() => {
     const buttons = [...document.querySelectorAll('[data-action="save-helper-correction"][data-helper]')];
     return buttons.at(-1)?.dataset.helper || "";
@@ -380,17 +394,28 @@ const afterDirectCustom = await bodyText();
 
 await click('[data-action="set-tab"][data-tab="backup"]');
 await wait();
-const selectedAltForPaid = await chooseCompletedZoneCorrection("대체배송", "paid_received");
-if (selectedAltForPaid) await click(`[data-action="apply-zone-correction"][data-zone="${selectedAltForPaid}"]`);
+const selectedAltForPaid = await selectCorrectionTarget("대체배송");
+if (selectedAltForPaid) {
+  await click('[data-action="select-correction-target"]');
+  await wait(300);
+  await setSelectedZoneCorrectionKind("paid_received");
+  await click('[data-action="save-zone-correction"]');
+}
 await wait(900);
 const afterAltToPaidHelper = await bodyText();
-const helperIdAfterPaid = await latestHelperId();
+await selectCorrectionTarget("도우미 배송 유료");
+await click('[data-action="select-correction-target"]');
+await wait(300);
+const helperIdAfterPaid = await activeHelperId();
 if (helperIdAfterPaid) {
   await setHelperKind(helperIdAfterPaid, "free_received");
   await click(`[data-action="save-helper-correction"][data-helper="${helperIdAfterPaid}"]`);
   await wait(900);
 }
 const afterPaidToFreeHelper = await bodyText();
+await selectCorrectionTarget("도우미 배송 무료");
+await click('[data-action="select-correction-target"]');
+await wait(300);
 if (helperIdAfterPaid) {
   await setHelperRestoreTarget(helperIdAfterPaid, "alt");
   await click(`[data-action="restore-helper-zone"][data-helper="${helperIdAfterPaid}"]`);
@@ -398,10 +423,30 @@ if (helperIdAfterPaid) {
 }
 const afterHelperRestoredToAlt = await bodyText();
 
-const selectedAltAgain = await chooseCompletedZoneCorrection("대체배송", "paid_received");
-if (selectedAltAgain) await click(`[data-action="apply-zone-correction"][data-zone="${selectedAltAgain}"]`);
+const selectedCustomForRepeatedEdit = await selectCorrectionTarget("상가 추가");
+if (selectedCustomForRepeatedEdit) {
+  await click('[data-action="select-correction-target"]');
+  await wait(300);
+  await setSelectedZoneCorrectionKind("alt");
+  await setSelectedZoneCorrectionName("상가 정정");
+  await setValue("#correction-zone-delivered", "6");
+  await click('[data-action="save-zone-correction"]');
+  await wait(900);
+}
+const afterCorrectedZoneEdited = await bodyText();
+
+const selectedAltAgain = await selectCorrectionTarget("대체배송");
+if (selectedAltAgain) {
+  await click('[data-action="select-correction-target"]');
+  await wait(300);
+  await setSelectedZoneCorrectionKind("paid_received");
+  await click('[data-action="save-zone-correction"]');
+}
 await wait(900);
-const helperIdForHilsRestore = await latestHelperId();
+await selectCorrectionTarget("도우미 배송 유료");
+await click('[data-action="select-correction-target"]');
+await wait(300);
+const helperIdForHilsRestore = await activeHelperId();
 if (helperIdForHilsRestore) {
   await setHelperRestoreTarget(helperIdForHilsRestore, "hils");
   await click(`[data-action="restore-helper-zone"][data-helper="${helperIdForHilsRestore}"]`);
@@ -409,10 +454,18 @@ if (helperIdForHilsRestore) {
 }
 const afterHelperRestoredToHils = await bodyText();
 
-const selectedHilsForHelper = await chooseCompletedZoneCorrection("힐스테이트", "free_received");
-if (selectedHilsForHelper) await click(`[data-action="apply-zone-correction"][data-zone="${selectedHilsForHelper}"]`);
+const selectedHilsForHelper = await selectCorrectionTarget("힐스테이트");
+if (selectedHilsForHelper) {
+  await click('[data-action="select-correction-target"]');
+  await wait(300);
+  await setSelectedZoneCorrectionKind("free_received");
+  await click('[data-action="save-zone-correction"]');
+}
 await wait(900);
-const helperIdForMijuRestore = await latestHelperId();
+await selectCorrectionTarget("도우미 배송 무료");
+await click('[data-action="select-correction-target"]');
+await wait(300);
+const helperIdForMijuRestore = await activeHelperId();
 if (helperIdForMijuRestore) {
   await setHelperRestoreTarget(helperIdForMijuRestore, "miju");
   await click(`[data-action="restore-helper-zone"][data-helper="${helperIdForMijuRestore}"]`);
@@ -473,6 +526,7 @@ const result = {
   correctionAltToPaidHelper: afterAltToPaidHelper.includes("도우미 배송 유료") && afterAltToPaidHelper.includes("7개"),
   correctionPaidToFreeHelper: afterPaidToFreeHelper.includes("도우미 배송 무료") && afterPaidToFreeHelper.includes("효율 제외"),
   correctionHelperRestoredToAlt: afterHelperRestoredToAlt.includes("대체배송") && afterHelperRestoredToAlt.includes("구역 기록으로 복구"),
+  correctionZoneRepeatedEdit: afterCorrectedZoneEdited.includes("상가 정정") && afterCorrectedZoneEdited.includes("6개"),
   correctionHelperRestoredToHils: afterHelperRestoredToHils.includes("힐스테이트") && afterHelperRestoredToHils.includes("구역 기록으로 복구"),
   correctionHelperRestoredToMiju: afterHelperRestoredToMiju.includes("미주") && afterHelperRestoredToMiju.includes("구역 기록으로 복구"),
   hugeQuantityBlockedOrWarned: !afterHuge.includes("수량 999개"),

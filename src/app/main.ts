@@ -4,7 +4,7 @@ import { createEvent } from "../domain/eventTimeline";
 import { calculateDay } from "../domain/deliveryCalc";
 import { buildDailyReport } from "../domain/reportBuilder";
 import { resolveMijuDetailQuantity, validateZoneQuantity } from "../domain/zoneValidation";
-import type { DayCalculation, DayRecord, ReportResult, TimelineEvent, TimelineEventType, ZoneRecord } from "../domain/types";
+import type { DayCalculation, DayRecord, HelperRecord, ReportResult, TimelineEvent, TimelineEventType, ZoneRecord } from "../domain/types";
 import { buildPhoneInstallDashboard, preparePhoneInstallUpdate } from "../install/phoneInstall";
 import {
   PHONE_INSTALL_BACKUP_FILENAME,
@@ -43,6 +43,7 @@ let activeStatsTab: StatsTab = "week";
 let statsWeekOffset = 0;
 let statsMonthOffset = 0;
 let statsSelectedDate = todayKey();
+let activeCorrectionTargetId = "";
 
 type AppTab = "work" | "log" | "report" | "stats" | "backup";
 type StatsTab = "week" | "month" | "date";
@@ -628,62 +629,138 @@ function renderRecordCorrectionPanel(): string {
       return { helper, event, kind, quantity };
     })
     .filter((item) => item.event && item.kind && item.quantity > 0);
+  const targets = [
+    ...completed.map(({ zone, delivered }) => ({
+      id: `zone:${zone.id}`,
+      label: `${zone.order}구역 ${zone.name} · ${delivered}개`,
+      type: "zone" as const,
+      zone,
+      delivered,
+    })),
+    ...helpers.map(({ helper, kind, quantity }) => ({
+      id: `helper:${helper.id}`,
+      label: `${helper.name} · ${quantity}개 · ${kind === "free_received" ? "무료" : "유료"}`,
+      type: "helper" as const,
+      helper,
+      kind,
+      quantity,
+    })),
+  ];
+  if (!targets.some((target) => target.id === activeCorrectionTargetId)) {
+    activeCorrectionTargetId = targets[0]?.id ?? "";
+  }
+  const selectedTarget = targets.find((target) => target.id === activeCorrectionTargetId);
 
   return `
     <section class="record-correction">
       <h3>기록 정정</h3>
-      <p class="hint">로그 화면은 보기 전용입니다. 잘못 누른 기록은 여기서 다시 고칩니다. 도우미 무료/유료는 여러 번 재수정할 수 있습니다.</p>
+      <p class="hint">로그 화면은 보기 전용입니다. 잘못 누른 기록은 여기서 하나씩 불러와 여러 번 다시 고칩니다.</p>
       ${completed.length === 0 && helpers.length === 0 ? `<p class="empty-state">정정할 기록이 없습니다.</p>` : ""}
-      ${completed.length === 0 ? "" : `
-        <div class="correction-list">
-          ${completed.map(({ zone, delivered }) => `
-            <article>
-              <strong>${escapeHtml(zone.name)}</strong>
-              <p>${delivered}개 · ${zone.order}구역 완료 기록</p>
-              <label>정정 종류
-                <select data-zone-correction="${escapeAttribute(zone.id)}">
-                  <option value="free_received">도우미 배송 무료로 전환</option>
-                  <option value="paid_received">도우미 배송 유료로 전환</option>
-                </select>
-              </label>
-              <button data-action="apply-zone-correction" data-zone="${escapeAttribute(zone.id)}">정정 저장</button>
-            </article>
-          `).join("")}
-        </div>
-      `}
-      ${helpers.length === 0 ? "" : `
-        <div class="correction-list">
-          ${helpers.map(({ helper, event, kind, quantity }) => `
-            <article>
-              <strong>${escapeHtml(helper.name)}</strong>
-              <p>${quantity}개 · ${kind === "free_received" ? "효율 제외" : "효율 포함"}</p>
-              <label>도우미 종류
-                <select data-helper-kind="${escapeAttribute(helper.id)}">
-                  <option value="free_received"${kind === "free_received" ? " selected" : ""}>도우미 배송 무료</option>
-                  <option value="paid_received"${kind === "paid_received" ? " selected" : ""}>도우미 배송 유료</option>
-                </select>
-              </label>
-              <label>수량
-                <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity}">
-              </label>
-              <label>시각
-                <input data-helper-at="${escapeAttribute(helper.id)}" type="datetime-local" value="${formatIsoForInput(event!.at)}">
-              </label>
-              <button data-action="save-helper-correction" data-helper="${escapeAttribute(helper.id)}">도우미 기록 수정 저장</button>
-              <label>구역으로 되돌리기
-                <select data-helper-zone-restore="${escapeAttribute(helper.id)}">
-                  <option value="alt">대체배송</option>
-                  <option value="hils">힐스테이트</option>
-                  <option value="miju">미주</option>
-                  <option value="custom">추가구역</option>
-                </select>
-              </label>
-              <button data-action="restore-helper-zone" data-helper="${escapeAttribute(helper.id)}">구역 기록으로 복구</button>
-            </article>
-          `).join("")}
-        </div>
+      ${targets.length === 0 ? "" : `
+        <label>수정할 기록
+          <select id="correction-target">
+            ${targets.map((target) => `
+              <option value="${escapeAttribute(target.id)}"${target.id === activeCorrectionTargetId ? " selected" : ""}>${escapeHtml(target.label)}</option>
+            `).join("")}
+          </select>
+        </label>
+        <button data-action="select-correction-target">기록 불러오기</button>
+        ${selectedTarget?.type === "zone" ? renderZoneCorrectionForm(selectedTarget.zone, selectedTarget.delivered) : ""}
+        ${selectedTarget?.type === "helper" ? renderHelperCorrectionForm(selectedTarget.helper) : ""}
       `}
     </section>
+  `;
+}
+
+function renderZoneCorrectionForm(zone: ZoneRecord, delivered: number): string {
+  const start = latestZoneEvent(zone.id, "zone_start");
+  const end = latestZoneEvent(zone.id, "zone_end");
+  const sortingStart = latestZoneEvent(zone.id, "sorting_start");
+  const sortingEnd = latestZoneEvent(zone.id, "sorting_end");
+  const bucket = getZoneBucket(currentDay!, zone.id);
+  const currentKind = bucket === "miju" ? "miju" : bucket === "hils" ? "hils" : "alt";
+  const customName = currentKind === "alt" ? zone.name : "";
+  return `
+    <article class="correction-editor">
+      <strong>${escapeHtml(zone.name)}</strong>
+      <p>${delivered}개 · ${zone.order}구역 완료 기록</p>
+      <label>기록 종류
+        <select id="correction-zone-kind">
+          <option value="miju"${currentKind === "miju" ? " selected" : ""}>구역 기록 · 미주</option>
+          <option value="hils"${currentKind === "hils" ? " selected" : ""}>구역 기록 · 힐스테이트</option>
+          <option value="alt"${currentKind === "alt" ? " selected" : ""}>구역 기록 · 대체배송/추가구역</option>
+          <option value="free_received">도우미 배송 무료로 전환</option>
+          <option value="paid_received">도우미 배송 유료로 전환</option>
+        </select>
+      </label>
+      <label>구역 이름
+        <input id="correction-zone-name" type="text" value="${escapeAttribute(customName || zone.name)}">
+      </label>
+      <label>수량
+        <input id="correction-zone-delivered" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}">
+      </label>
+      <div class="edit-grid compact">
+        <label>시작
+          <input id="correction-zone-start" type="datetime-local" value="${start ? formatIsoForInput(start.at) : ""}">
+        </label>
+        <label>종료
+          <input id="correction-zone-end" type="datetime-local" value="${end ? formatIsoForInput(end.at) : ""}">
+        </label>
+        <label>정리 시작
+          <input id="correction-zone-sorting-start" type="datetime-local" value="${sortingStart ? formatIsoForInput(sortingStart.at) : ""}">
+        </label>
+        <label>정리 완료
+          <input id="correction-zone-sorting-end" type="datetime-local" value="${sortingEnd ? formatIsoForInput(sortingEnd.at) : ""}">
+        </label>
+        <label>실패
+          <input id="correction-zone-failed" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="0">
+        </label>
+        <label>추가
+          <input id="correction-zone-extra" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="0">
+        </label>
+      </div>
+      <button data-action="save-zone-correction" data-zone="${escapeAttribute(zone.id)}">선택 기록 정정 반영</button>
+    </article>
+  `;
+}
+
+function renderHelperCorrectionForm(helper: HelperRecord): string {
+  const event = currentDay?.timeline.find((candidate) =>
+    candidate.type === "helper_add" && helper.linkedEventIds.includes(candidate.id)
+  );
+  const payload = event?.payload as Record<string, unknown> | undefined;
+  const kind = normalizeReceivedHelperKind(helper.kind ?? payload?.helperKind) ?? "free_received";
+  const quantity = typeof helper.quantity === "number"
+    ? helper.quantity
+    : typeof payload?.quantity === "number"
+      ? payload.quantity
+      : 0;
+  return `
+    <article class="correction-editor">
+      <strong>${escapeHtml(helper.name)}</strong>
+      <p>${quantity}개 · ${kind === "free_received" ? "효율 제외" : "효율 포함"}</p>
+      <label>도우미 종류
+        <select data-helper-kind="${escapeAttribute(helper.id)}">
+          <option value="free_received"${kind === "free_received" ? " selected" : ""}>도우미 배송 무료</option>
+          <option value="paid_received"${kind === "paid_received" ? " selected" : ""}>도우미 배송 유료</option>
+        </select>
+      </label>
+      <label>수량
+        <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity}">
+      </label>
+      <label>시각
+        <input data-helper-at="${escapeAttribute(helper.id)}" type="datetime-local" value="${event ? formatIsoForInput(event.at) : ""}">
+      </label>
+      <button data-action="save-helper-correction" data-helper="${escapeAttribute(helper.id)}">도우미 기록 정정 반영</button>
+      <label>구역 기록으로 바꾸기
+        <select data-helper-zone-restore="${escapeAttribute(helper.id)}">
+          <option value="alt">대체배송/추가구역</option>
+          <option value="hils">힐스테이트</option>
+          <option value="miju">미주</option>
+        </select>
+      </label>
+      <button data-action="restore-helper-zone" data-helper="${escapeAttribute(helper.id)}">구역 기록으로 복구</button>
+    </article>
   `;
 }
 
@@ -1561,6 +1638,15 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     await applyZoneCorrection(zoneId);
     return;
   }
+  if (action === "select-correction-target") {
+    activeCorrectionTargetId = readText("#correction-target", activeCorrectionTargetId);
+    render();
+    return;
+  }
+  if (action === "save-zone-correction" && zoneId) {
+    await saveSelectedZoneCorrection(zoneId);
+    return;
+  }
   if (action === "save-helper-correction") {
     await saveHelperCorrection(button.dataset.helper);
     return;
@@ -1738,6 +1824,23 @@ function normalizeZoneOrders(): void {
   currentDay.zones = getOrderedZones().map((zone, index) => ({ ...zone, order: index + 1 }));
 }
 
+function normalizeZoneOrdersByActualStart(): void {
+  if (!currentDay) return;
+  currentDay.zones = [...currentDay.zones]
+    .sort((a, b) => {
+      const aStart = latestZoneEvent(a.id, "zone_start")?.at;
+      const bStart = latestZoneEvent(b.id, "zone_start")?.at;
+      if (aStart && bStart) {
+        const diff = new Date(aStart).getTime() - new Date(bStart).getTime();
+        if (diff !== 0) return diff;
+      }
+      if (aStart && !bStart) return -1;
+      if (!aStart && bStart) return 1;
+      return a.order - b.order;
+    })
+    .map((zone, index) => ({ ...zone, order: index + 1 }));
+}
+
 function addIncidentEvent(): void {
   if (!currentDay) return;
   const title = readText("#event-title", "기타");
@@ -1785,6 +1888,96 @@ async function applyZoneCorrection(zoneId: string): Promise<void> {
     return;
   }
   await convertCompletedZoneToHelper(zoneId, kind);
+}
+
+async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
+  if (!currentDay) return;
+  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
+  if (!zone) {
+    toast("수정할 구역 기록을 찾지 못했습니다.");
+    return;
+  }
+  const kind = readText("#correction-zone-kind", "alt");
+  if (kind === "free_received" || kind === "paid_received") {
+    await convertCompletedZoneToHelper(zoneId, kind);
+    activeCorrectionTargetId = "";
+    return;
+  }
+
+  const deliveredInput = readLimitedNumberField("#correction-zone-delivered", 3);
+  const delivered = resolveValidatedDelivered(zoneId, deliveredInput.value, deliveredInput.hasValue);
+  if (delivered === undefined) return;
+
+  const start = latestZoneEvent(zoneId, "zone_start");
+  const end = latestZoneEvent(zoneId, "zone_end");
+  const sortingStart = latestZoneEvent(zoneId, "sorting_start");
+  const sortingEnd = latestZoneEvent(zoneId, "sorting_end");
+  const startAt = readChangedTimeInput("#correction-zone-start", start?.at);
+  const endAt = readChangedTimeInput("#correction-zone-end", end?.at);
+  const sortingStartAt = readChangedTimeInput("#correction-zone-sorting-start", sortingStart?.at);
+  const sortingEndAt = readChangedTimeInput("#correction-zone-sorting-end", sortingEnd?.at);
+  const timeError = validateZoneEditTimes(zoneId, { startAt, endAt, sortingStartAt, sortingEndAt });
+  if (timeError) {
+    toast(timeError);
+    return;
+  }
+
+  const nextName = resolveCorrectionZoneName(kind, readText("#correction-zone-name", zone.name));
+  await downloadPreparedSnapshot("record-correction-before", { kind: "date", date: currentDay.date });
+  currentDay = applyCompletedZoneEdit(currentDay, {
+    zoneId,
+    startAt,
+    endAt,
+    sortingStartAt,
+    sortingEndAt,
+    delivered,
+    failed: readLimitedNumber("#correction-zone-failed", 3),
+    extra: readLimitedNumber("#correction-zone-extra", 3),
+    reason: "record_correction_panel",
+  });
+  currentDay = {
+    ...currentDay,
+    zones: currentDay.zones.map((candidate) =>
+      candidate.id === zoneId
+        ? {
+            ...candidate,
+            name: nextName,
+            counts: undefined,
+            countsSourceEventIds: undefined,
+            countsCalculatedAt: undefined,
+          }
+        : candidate,
+    ),
+    timeline: currentDay.timeline.map((event) => {
+      if (event.zoneId !== zoneId || !["zone_start", "delivery_start", "sorting_start", "sorting_end", "zone_end"].includes(event.type)) {
+        return event;
+      }
+      const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+      return {
+        ...event,
+        payload: {
+          ...payload,
+          zoneName: nextName,
+        },
+      };
+    }),
+    meta: {
+      ...currentDay.meta,
+      updatedAt: nowIso(),
+      recoveryStatus: currentDay.meta.recoveryStatus === "none" ? "needsReview" : currentDay.meta.recoveryStatus,
+    },
+  };
+  normalizeZoneOrdersByActualStart();
+  activeCorrectionTargetId = `zone:${zoneId}`;
+  toast(`${nextName} 기록을 다시 저장했습니다.`);
+  await saveAndRender();
+}
+
+function resolveCorrectionZoneName(kind: string, enteredName: string): string {
+  if (kind === "miju") return "미주";
+  if (kind === "hils") return "힐스테이트";
+  if (kind === "alt") return enteredName.trim() || "대체배송";
+  return enteredName.trim() || "추가구역";
 }
 
 async function convertCompletedZoneToHelper(zoneId: string, kind: "free_received" | "paid_received"): Promise<void> {
@@ -1972,7 +2165,7 @@ async function restoreHelperToZone(helperId?: string): Promise<void> {
     },
     note: "도우미 기록에서 구역으로 복구됨. 시간/상세 검토 필요.",
   });
-  normalizeZoneOrders();
+  normalizeZoneOrdersByActualStart();
   toast(`${zoneName} ${quantity}개 구역 기록으로 복구했습니다. 시간은 검토 필요로 남겼습니다.`);
   await saveAndRender();
 }
@@ -2754,6 +2947,13 @@ function readOptionalTimeInput(selector: string, existingIso?: string): string |
     return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
   }
   return mergeCurrentDateAndTime(value, existingIso);
+}
+
+function readChangedTimeInput(selector: string, existingIso?: string): string | undefined {
+  const value = document.querySelector<HTMLInputElement>(selector)?.value;
+  if (!value) return undefined;
+  if (existingIso && value === formatIsoForInput(existingIso)) return undefined;
+  return readOptionalTimeInput(selector, existingIso);
 }
 
 function mergeCurrentDateAndTime(value: string, existingIso?: string): string | undefined {

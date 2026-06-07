@@ -2026,9 +2026,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.14-record-correction-rework";
+var APP_VERSION = "0.2.15-repeatable-record-correction";
 var APP_UPDATED_LABEL = "2026-06-07 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v15";
+var CACHE_VERSION = "v16";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -2061,6 +2061,7 @@ var activeStatsTab = "week";
 var statsWeekOffset = 0;
 var statsMonthOffset = 0;
 var statsSelectedDate = todayKey();
+var activeCorrectionTargetId = "";
 var appRoot = document.querySelector("#app");
 if (!appRoot) throw new Error("Missing #app root");
 var root = appRoot;
@@ -2512,61 +2513,131 @@ function renderRecordCorrectionPanel() {
     const quantity = typeof helper.quantity === "number" ? helper.quantity : typeof payload?.quantity === "number" ? payload.quantity : 0;
     return { helper, event, kind, quantity };
   }).filter((item) => item.event && item.kind && item.quantity > 0);
+  const targets = [
+    ...completed.map(({ zone, delivered }) => ({
+      id: `zone:${zone.id}`,
+      label: `${zone.order}\uAD6C\uC5ED ${zone.name} \xB7 ${delivered}\uAC1C`,
+      type: "zone",
+      zone,
+      delivered
+    })),
+    ...helpers.map(({ helper, kind, quantity }) => ({
+      id: `helper:${helper.id}`,
+      label: `${helper.name} \xB7 ${quantity}\uAC1C \xB7 ${kind === "free_received" ? "\uBB34\uB8CC" : "\uC720\uB8CC"}`,
+      type: "helper",
+      helper,
+      kind,
+      quantity
+    }))
+  ];
+  if (!targets.some((target) => target.id === activeCorrectionTargetId)) {
+    activeCorrectionTargetId = targets[0]?.id ?? "";
+  }
+  const selectedTarget = targets.find((target) => target.id === activeCorrectionTargetId);
   return `
     <section class="record-correction">
       <h3>\uAE30\uB85D \uC815\uC815</h3>
-      <p class="hint">\uB85C\uADF8 \uD654\uBA74\uC740 \uBCF4\uAE30 \uC804\uC6A9\uC785\uB2C8\uB2E4. \uC798\uBABB \uB204\uB978 \uAE30\uB85D\uC740 \uC5EC\uAE30\uC11C \uB2E4\uC2DC \uACE0\uCE69\uB2C8\uB2E4. \uB3C4\uC6B0\uBBF8 \uBB34\uB8CC/\uC720\uB8CC\uB294 \uC5EC\uB7EC \uBC88 \uC7AC\uC218\uC815\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</p>
+      <p class="hint">\uB85C\uADF8 \uD654\uBA74\uC740 \uBCF4\uAE30 \uC804\uC6A9\uC785\uB2C8\uB2E4. \uC798\uBABB \uB204\uB978 \uAE30\uB85D\uC740 \uC5EC\uAE30\uC11C \uD558\uB098\uC529 \uBD88\uB7EC\uC640 \uC5EC\uB7EC \uBC88 \uB2E4\uC2DC \uACE0\uCE69\uB2C8\uB2E4.</p>
       ${completed.length === 0 && helpers.length === 0 ? `<p class="empty-state">\uC815\uC815\uD560 \uAE30\uB85D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</p>` : ""}
-      ${completed.length === 0 ? "" : `
-        <div class="correction-list">
-          ${completed.map(({ zone, delivered }) => `
-            <article>
-              <strong>${escapeHtml(zone.name)}</strong>
-              <p>${delivered}\uAC1C \xB7 ${zone.order}\uAD6C\uC5ED \uC644\uB8CC \uAE30\uB85D</p>
-              <label>\uC815\uC815 \uC885\uB958
-                <select data-zone-correction="${escapeAttribute(zone.id)}">
-                  <option value="free_received">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC\uB85C \uC804\uD658</option>
-                  <option value="paid_received">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC\uB85C \uC804\uD658</option>
-                </select>
-              </label>
-              <button data-action="apply-zone-correction" data-zone="${escapeAttribute(zone.id)}">\uC815\uC815 \uC800\uC7A5</button>
-            </article>
-          `).join("")}
-        </div>
-      `}
-      ${helpers.length === 0 ? "" : `
-        <div class="correction-list">
-          ${helpers.map(({ helper, event, kind, quantity }) => `
-            <article>
-              <strong>${escapeHtml(helper.name)}</strong>
-              <p>${quantity}\uAC1C \xB7 ${kind === "free_received" ? "\uD6A8\uC728 \uC81C\uC678" : "\uD6A8\uC728 \uD3EC\uD568"}</p>
-              <label>\uB3C4\uC6B0\uBBF8 \uC885\uB958
-                <select data-helper-kind="${escapeAttribute(helper.id)}">
-                  <option value="free_received"${kind === "free_received" ? " selected" : ""}>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC</option>
-                  <option value="paid_received"${kind === "paid_received" ? " selected" : ""}>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC</option>
-                </select>
-              </label>
-              <label>\uC218\uB7C9
-                <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity}">
-              </label>
-              <label>\uC2DC\uAC01
-                <input data-helper-at="${escapeAttribute(helper.id)}" type="datetime-local" value="${formatIsoForInput(event.at)}">
-              </label>
-              <button data-action="save-helper-correction" data-helper="${escapeAttribute(helper.id)}">\uB3C4\uC6B0\uBBF8 \uAE30\uB85D \uC218\uC815 \uC800\uC7A5</button>
-              <label>\uAD6C\uC5ED\uC73C\uB85C \uB418\uB3CC\uB9AC\uAE30
-                <select data-helper-zone-restore="${escapeAttribute(helper.id)}">
-                  <option value="alt">\uB300\uCCB4\uBC30\uC1A1</option>
-                  <option value="hils">\uD790\uC2A4\uD14C\uC774\uD2B8</option>
-                  <option value="miju">\uBBF8\uC8FC</option>
-                  <option value="custom">\uCD94\uAC00\uAD6C\uC5ED</option>
-                </select>
-              </label>
-              <button data-action="restore-helper-zone" data-helper="${escapeAttribute(helper.id)}">\uAD6C\uC5ED \uAE30\uB85D\uC73C\uB85C \uBCF5\uAD6C</button>
-            </article>
-          `).join("")}
-        </div>
+      ${targets.length === 0 ? "" : `
+        <label>\uC218\uC815\uD560 \uAE30\uB85D
+          <select id="correction-target">
+            ${targets.map((target) => `
+              <option value="${escapeAttribute(target.id)}"${target.id === activeCorrectionTargetId ? " selected" : ""}>${escapeHtml(target.label)}</option>
+            `).join("")}
+          </select>
+        </label>
+        <button data-action="select-correction-target">\uAE30\uB85D \uBD88\uB7EC\uC624\uAE30</button>
+        ${selectedTarget?.type === "zone" ? renderZoneCorrectionForm(selectedTarget.zone, selectedTarget.delivered) : ""}
+        ${selectedTarget?.type === "helper" ? renderHelperCorrectionForm(selectedTarget.helper) : ""}
       `}
     </section>
+  `;
+}
+function renderZoneCorrectionForm(zone, delivered) {
+  const start = latestZoneEvent(zone.id, "zone_start");
+  const end = latestZoneEvent(zone.id, "zone_end");
+  const sortingStart = latestZoneEvent(zone.id, "sorting_start");
+  const sortingEnd = latestZoneEvent(zone.id, "sorting_end");
+  const bucket = getZoneBucket(currentDay, zone.id);
+  const currentKind = bucket === "miju" ? "miju" : bucket === "hils" ? "hils" : "alt";
+  const customName = currentKind === "alt" ? zone.name : "";
+  return `
+    <article class="correction-editor">
+      <strong>${escapeHtml(zone.name)}</strong>
+      <p>${delivered}\uAC1C \xB7 ${zone.order}\uAD6C\uC5ED \uC644\uB8CC \uAE30\uB85D</p>
+      <label>\uAE30\uB85D \uC885\uB958
+        <select id="correction-zone-kind">
+          <option value="miju"${currentKind === "miju" ? " selected" : ""}>\uAD6C\uC5ED \uAE30\uB85D \xB7 \uBBF8\uC8FC</option>
+          <option value="hils"${currentKind === "hils" ? " selected" : ""}>\uAD6C\uC5ED \uAE30\uB85D \xB7 \uD790\uC2A4\uD14C\uC774\uD2B8</option>
+          <option value="alt"${currentKind === "alt" ? " selected" : ""}>\uAD6C\uC5ED \uAE30\uB85D \xB7 \uB300\uCCB4\uBC30\uC1A1/\uCD94\uAC00\uAD6C\uC5ED</option>
+          <option value="free_received">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC\uB85C \uC804\uD658</option>
+          <option value="paid_received">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC\uB85C \uC804\uD658</option>
+        </select>
+      </label>
+      <label>\uAD6C\uC5ED \uC774\uB984
+        <input id="correction-zone-name" type="text" value="${escapeAttribute(customName || zone.name)}">
+      </label>
+      <label>\uC218\uB7C9
+        <input id="correction-zone-delivered" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}">
+      </label>
+      <div class="edit-grid compact">
+        <label>\uC2DC\uC791
+          <input id="correction-zone-start" type="datetime-local" value="${start ? formatIsoForInput(start.at) : ""}">
+        </label>
+        <label>\uC885\uB8CC
+          <input id="correction-zone-end" type="datetime-local" value="${end ? formatIsoForInput(end.at) : ""}">
+        </label>
+        <label>\uC815\uB9AC \uC2DC\uC791
+          <input id="correction-zone-sorting-start" type="datetime-local" value="${sortingStart ? formatIsoForInput(sortingStart.at) : ""}">
+        </label>
+        <label>\uC815\uB9AC \uC644\uB8CC
+          <input id="correction-zone-sorting-end" type="datetime-local" value="${sortingEnd ? formatIsoForInput(sortingEnd.at) : ""}">
+        </label>
+        <label>\uC2E4\uD328
+          <input id="correction-zone-failed" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="0">
+        </label>
+        <label>\uCD94\uAC00
+          <input id="correction-zone-extra" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="0">
+        </label>
+      </div>
+      <button data-action="save-zone-correction" data-zone="${escapeAttribute(zone.id)}">\uC120\uD0DD \uAE30\uB85D \uC815\uC815 \uBC18\uC601</button>
+    </article>
+  `;
+}
+function renderHelperCorrectionForm(helper) {
+  const event = currentDay?.timeline.find(
+    (candidate) => candidate.type === "helper_add" && helper.linkedEventIds.includes(candidate.id)
+  );
+  const payload = event?.payload;
+  const kind = normalizeReceivedHelperKind(helper.kind ?? payload?.helperKind) ?? "free_received";
+  const quantity = typeof helper.quantity === "number" ? helper.quantity : typeof payload?.quantity === "number" ? payload.quantity : 0;
+  return `
+    <article class="correction-editor">
+      <strong>${escapeHtml(helper.name)}</strong>
+      <p>${quantity}\uAC1C \xB7 ${kind === "free_received" ? "\uD6A8\uC728 \uC81C\uC678" : "\uD6A8\uC728 \uD3EC\uD568"}</p>
+      <label>\uB3C4\uC6B0\uBBF8 \uC885\uB958
+        <select data-helper-kind="${escapeAttribute(helper.id)}">
+          <option value="free_received"${kind === "free_received" ? " selected" : ""}>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC</option>
+          <option value="paid_received"${kind === "paid_received" ? " selected" : ""}>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC</option>
+        </select>
+      </label>
+      <label>\uC218\uB7C9
+        <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity}">
+      </label>
+      <label>\uC2DC\uAC01
+        <input data-helper-at="${escapeAttribute(helper.id)}" type="datetime-local" value="${event ? formatIsoForInput(event.at) : ""}">
+      </label>
+      <button data-action="save-helper-correction" data-helper="${escapeAttribute(helper.id)}">\uB3C4\uC6B0\uBBF8 \uAE30\uB85D \uC815\uC815 \uBC18\uC601</button>
+      <label>\uAD6C\uC5ED \uAE30\uB85D\uC73C\uB85C \uBC14\uAFB8\uAE30
+        <select data-helper-zone-restore="${escapeAttribute(helper.id)}">
+          <option value="alt">\uB300\uCCB4\uBC30\uC1A1/\uCD94\uAC00\uAD6C\uC5ED</option>
+          <option value="hils">\uD790\uC2A4\uD14C\uC774\uD2B8</option>
+          <option value="miju">\uBBF8\uC8FC</option>
+        </select>
+      </label>
+      <button data-action="restore-helper-zone" data-helper="${escapeAttribute(helper.id)}">\uAD6C\uC5ED \uAE30\uB85D\uC73C\uB85C \uBCF5\uAD6C</button>
+    </article>
   `;
 }
 function getViewportInfoLabel() {
@@ -3312,6 +3383,15 @@ async function handleAction(button) {
     await applyZoneCorrection(zoneId);
     return;
   }
+  if (action === "select-correction-target") {
+    activeCorrectionTargetId = readText("#correction-target", activeCorrectionTargetId);
+    render();
+    return;
+  }
+  if (action === "save-zone-correction" && zoneId) {
+    await saveSelectedZoneCorrection(zoneId);
+    return;
+  }
   if (action === "save-helper-correction") {
     await saveHelperCorrection(button.dataset.helper);
     return;
@@ -3475,6 +3555,20 @@ function normalizeZoneOrders() {
   if (!currentDay) return;
   currentDay.zones = getOrderedZones().map((zone, index) => ({ ...zone, order: index + 1 }));
 }
+function normalizeZoneOrdersByActualStart() {
+  if (!currentDay) return;
+  currentDay.zones = [...currentDay.zones].sort((a, b) => {
+    const aStart = latestZoneEvent(a.id, "zone_start")?.at;
+    const bStart = latestZoneEvent(b.id, "zone_start")?.at;
+    if (aStart && bStart) {
+      const diff = new Date(aStart).getTime() - new Date(bStart).getTime();
+      if (diff !== 0) return diff;
+    }
+    if (aStart && !bStart) return -1;
+    if (!aStart && bStart) return 1;
+    return a.order - b.order;
+  }).map((zone, index) => ({ ...zone, order: index + 1 }));
+}
 function addIncidentEvent() {
   if (!currentDay) return;
   const title = readText("#event-title", "\uAE30\uD0C0");
@@ -3520,6 +3614,89 @@ async function applyZoneCorrection(zoneId) {
     return;
   }
   await convertCompletedZoneToHelper(zoneId, kind);
+}
+async function saveSelectedZoneCorrection(zoneId) {
+  if (!currentDay) return;
+  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
+  if (!zone) {
+    toast("\uC218\uC815\uD560 \uAD6C\uC5ED \uAE30\uB85D\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+    return;
+  }
+  const kind = readText("#correction-zone-kind", "alt");
+  if (kind === "free_received" || kind === "paid_received") {
+    await convertCompletedZoneToHelper(zoneId, kind);
+    activeCorrectionTargetId = "";
+    return;
+  }
+  const deliveredInput = readLimitedNumberField("#correction-zone-delivered", 3);
+  const delivered = resolveValidatedDelivered(zoneId, deliveredInput.value, deliveredInput.hasValue);
+  if (delivered === void 0) return;
+  const start = latestZoneEvent(zoneId, "zone_start");
+  const end = latestZoneEvent(zoneId, "zone_end");
+  const sortingStart = latestZoneEvent(zoneId, "sorting_start");
+  const sortingEnd = latestZoneEvent(zoneId, "sorting_end");
+  const startAt = readChangedTimeInput("#correction-zone-start", start?.at);
+  const endAt = readChangedTimeInput("#correction-zone-end", end?.at);
+  const sortingStartAt = readChangedTimeInput("#correction-zone-sorting-start", sortingStart?.at);
+  const sortingEndAt = readChangedTimeInput("#correction-zone-sorting-end", sortingEnd?.at);
+  const timeError = validateZoneEditTimes(zoneId, { startAt, endAt, sortingStartAt, sortingEndAt });
+  if (timeError) {
+    toast(timeError);
+    return;
+  }
+  const nextName = resolveCorrectionZoneName(kind, readText("#correction-zone-name", zone.name));
+  await downloadPreparedSnapshot("record-correction-before", { kind: "date", date: currentDay.date });
+  currentDay = applyCompletedZoneEdit(currentDay, {
+    zoneId,
+    startAt,
+    endAt,
+    sortingStartAt,
+    sortingEndAt,
+    delivered,
+    failed: readLimitedNumber("#correction-zone-failed", 3),
+    extra: readLimitedNumber("#correction-zone-extra", 3),
+    reason: "record_correction_panel"
+  });
+  currentDay = {
+    ...currentDay,
+    zones: currentDay.zones.map(
+      (candidate) => candidate.id === zoneId ? {
+        ...candidate,
+        name: nextName,
+        counts: void 0,
+        countsSourceEventIds: void 0,
+        countsCalculatedAt: void 0
+      } : candidate
+    ),
+    timeline: currentDay.timeline.map((event) => {
+      if (event.zoneId !== zoneId || !["zone_start", "delivery_start", "sorting_start", "sorting_end", "zone_end"].includes(event.type)) {
+        return event;
+      }
+      const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+      return {
+        ...event,
+        payload: {
+          ...payload,
+          zoneName: nextName
+        }
+      };
+    }),
+    meta: {
+      ...currentDay.meta,
+      updatedAt: nowIso(),
+      recoveryStatus: currentDay.meta.recoveryStatus === "none" ? "needsReview" : currentDay.meta.recoveryStatus
+    }
+  };
+  normalizeZoneOrdersByActualStart();
+  activeCorrectionTargetId = `zone:${zoneId}`;
+  toast(`${nextName} \uAE30\uB85D\uC744 \uB2E4\uC2DC \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.`);
+  await saveAndRender();
+}
+function resolveCorrectionZoneName(kind, enteredName) {
+  if (kind === "miju") return "\uBBF8\uC8FC";
+  if (kind === "hils") return "\uD790\uC2A4\uD14C\uC774\uD2B8";
+  if (kind === "alt") return enteredName.trim() || "\uB300\uCCB4\uBC30\uC1A1";
+  return enteredName.trim() || "\uCD94\uAC00\uAD6C\uC5ED";
 }
 async function convertCompletedZoneToHelper(zoneId, kind) {
   if (!currentDay) return;
@@ -3696,7 +3873,7 @@ async function restoreHelperToZone(helperId) {
     },
     note: "\uB3C4\uC6B0\uBBF8 \uAE30\uB85D\uC5D0\uC11C \uAD6C\uC5ED\uC73C\uB85C \uBCF5\uAD6C\uB428. \uC2DC\uAC04/\uC0C1\uC138 \uAC80\uD1A0 \uD544\uC694."
   });
-  normalizeZoneOrders();
+  normalizeZoneOrdersByActualStart();
   toast(`${zoneName} ${quantity}\uAC1C \uAD6C\uC5ED \uAE30\uB85D\uC73C\uB85C \uBCF5\uAD6C\uD588\uC2B5\uB2C8\uB2E4. \uC2DC\uAC04\uC740 \uAC80\uD1A0 \uD544\uC694\uB85C \uB0A8\uACBC\uC2B5\uB2C8\uB2E4.`);
   await saveAndRender();
 }
@@ -4340,6 +4517,12 @@ function readOptionalTimeInput(selector, existingIso) {
     return Number.isNaN(parsed.getTime()) ? void 0 : parsed.toISOString();
   }
   return mergeCurrentDateAndTime(value, existingIso);
+}
+function readChangedTimeInput(selector, existingIso) {
+  const value = document.querySelector(selector)?.value;
+  if (!value) return void 0;
+  if (existingIso && value === formatIsoForInput(existingIso)) return void 0;
+  return readOptionalTimeInput(selector, existingIso);
 }
 function mergeCurrentDateAndTime(value, existingIso) {
   if (!currentDay) return void 0;

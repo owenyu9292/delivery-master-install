@@ -1,8 +1,10 @@
 node_modules/
 .chrome-review/
 .chrome-smoke/
+.chrome-smoke-*/
 dist/
 current-source/
+review-fold-cover-*.png
 *.log
 .DS_Store
 Thumbs.db

@@ -981,3 +981,35 @@ git 작업:
 - `npm run build`: 통과
 - 브라우저 스모크 검수: 411x762 / DPR 2.63, 전체 항목 true
 - 추가 검수 항목: `directHilsFirstComplete`, `directAlternateComplete`, `directCustomComplete`, `correctionAltToPaidHelper`, `correctionPaidToFreeHelper`, `correctionHelperRestoredToAlt`, `correctionHelperRestoredToHils`, `correctionHelperRestoredToMiju`
+
+## 2026-06-07 기록 정정 선택형 반복 수정 v16
+
+상태: 구현/검수 완료
+
+수정 파일:
+
+- `src/app/main.ts`
+- `scripts/browser-smoke.mjs`
+- `src/app/version.ts`
+- `todo.md`
+- `progress.md`
+- `unresolved.md`
+- `changelog.md`
+- `HOTFIX_HANDOFF.md`
+
+반영 내용:
+
+- `기록 정정`을 단발 카드 목록에서 `수정할 기록 선택 -> 기록 불러오기 -> 선택 기록 정정 반영` 구조로 바꿨다.
+- 완료 구역의 구역 종류, 이름, 수량, 시작/종료, 정리 시작/완료, 실패/추가를 반복 수정할 수 있게 했다.
+- 도우미 배송 무료/유료 전환 후에도 다시 무료/유료, 수량, 시각을 재수정할 수 있게 했다.
+- 도우미 기록을 구역으로 복구한 뒤에도 다시 선택해서 재수정할 수 있게 했다.
+- 도우미에서 구역으로 복구할 때 실제 시작시간 기준으로 구역 순서를 재정렬해 재수정 검증이 막히지 않게 했다.
+- 기록 정정에서 시간칸을 바꾸지 않은 경우 기존 시간 검증을 건드리지 않아, 이름/수량만 고치는 현장 정정이 막히지 않게 했다.
+- 앱 버전과 캐시를 `0.2.15-repeatable-record-correction / v16`으로 올렸다.
+
+검수 결과:
+
+- `npm run check`: 통과, domain tests 48/48
+- `npm run build`: 통과
+- 브라우저 스모크 검수: 411x762 / DPR 2.63, 별도 Chrome 프로필, 전체 항목 true
+- 추가 확인: `correctionZoneRepeatedEdit` 통과
