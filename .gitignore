@@ -1,0 +1,7 @@
+node_modules/
+.chrome-review/
+dist/
+current-source/
+*.log
+.DS_Store
+Thumbs.db

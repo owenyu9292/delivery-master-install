@@ -389,16 +389,35 @@ function calculateTotals(dayRecord, zones) {
   const firstEvent2 = sortTimeline(dayRecord.timeline)[0];
   const closeEvent = [...sortTimeline(dayRecord.timeline)].reverse().find((event) => event.type === "day_close");
   const deliveryMinutes = sumDefined(zones.map((zone) => zone.deliveryMinutes));
-  const deliveredCount = sumDefined(zones.map((zone) => zone.counts.delivered));
+  const zoneTotalCount = sumDefined(zones.map((zone) => zone.counts.total));
+  const zoneDeliveredCount = sumDefined(zones.map((zone) => zone.counts.delivered));
+  const helperCounts = calculateReceivedHelperCounts(dayRecord);
+  const deliveredCount = zoneDeliveredCount + helperCounts.free + helperCounts.paid;
+  const efficiencyCount = zoneDeliveredCount + helperCounts.paid;
   return {
-    totalCount: sumDefined(zones.map((zone) => zone.counts.total)),
+    totalCount: zoneTotalCount + helperCounts.free + helperCounts.paid,
     deliveredCount,
+    efficiencyCount,
+    helperFreeCount: helperCounts.free,
+    helperPaidCount: helperCounts.paid,
     failedCount: sumDefined(zones.map((zone) => zone.counts.failed)),
     extraCount: sumDefined(zones.map((zone) => zone.counts.extra)),
     totalElapsedMinutes: diffMinutes(firstEvent2?.at, closeEvent?.at),
     deliveryMinutes,
-    efficiencyPerHour: calculateEfficiencyPerHour(deliveredCount, deliveryMinutes)
+    efficiencyPerHour: calculateEfficiencyPerHour(efficiencyCount, deliveryMinutes)
   };
+}
+function calculateReceivedHelperCounts(dayRecord) {
+  const counts = { free: 0, paid: 0 };
+  for (const event of dayRecord.timeline) {
+    if (event.type !== "helper_add" || !event.payload) continue;
+    const payload = event.payload;
+    const quantity = typeof payload.quantity === "number" && Number.isFinite(payload.quantity) ? payload.quantity : 0;
+    if (quantity <= 0 || payload.unpaid === true) continue;
+    if (payload.helperKind === "paid_received") counts.paid += quantity;
+    if (payload.helperKind === "free_received") counts.free += quantity;
+  }
+  return counts;
 }
 function calculateEfficiencyPerHour(deliveredCount, deliveryMinutes) {
   if (deliveryMinutes === void 0 || deliveryMinutes < 1) return void 0;
@@ -591,6 +610,7 @@ function buildDailyReport(dayRecord, calculation, options = {}) {
     "[\uD1B5\uD569 \uBD84\uC11D]",
     `\uCD1D \uBC30\uC1A1 \uC218\uB7C9: ${calculation.totals.totalCount}\uAC1C`,
     `\uC608\uC0C1 \uC218\uB7C9:   ${expectedText(expected, scanMiss)}`,
+    ...buildHelperSummaryLines(calculation),
     `\uC804\uCCB4 \uC5C5\uBB34:   \uC9C4\uC811 ${formatClock(depart?.at)} \uCD9C\uBC1C`,
     `             \uCD5C\uC885 \uC885\uB8CC ${formatClock(close?.at)}`,
     `\uC21C\uC218 \uC6B4\uC804:   \uC9C4\uC811\u2192\uCCAD\uB7C9\uB9AC ${formatMinutes(driveMinutes)}`,
@@ -629,6 +649,15 @@ function buildDailyReport(dayRecord, calculation, options = {}) {
     sourceEventIds,
     warnings: calculation.warnings
   };
+}
+function buildHelperSummaryLines(calculation) {
+  const free = calculation.totals.helperFreeCount ?? 0;
+  const paid = calculation.totals.helperPaidCount ?? 0;
+  if (free <= 0 && paid <= 0) return [];
+  const lines = ["\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1:"];
+  if (free > 0) lines.push(`             \uBB34\uB8CC ${free}\uAC1C (\uD6A8\uC728 \uC81C\uC678)`);
+  if (paid > 0) lines.push(`             \uC720\uB8CC ${paid}\uAC1C (\uD6A8\uC728 \uD3EC\uD568)`);
+  return lines;
 }
 function buildPreviewModel(dayRecord, calculation) {
   return {
@@ -1997,9 +2026,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.12-direct-delivery-hotfix";
+var APP_VERSION = "0.2.13-helper-zone-order-hotfix";
 var APP_UPDATED_LABEL = "2026-06-07 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v13";
+var CACHE_VERSION = "v14";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -2462,6 +2491,36 @@ function renderBackupSettingsTab() {
         <button data-action="import-field-backup">\uD604\uC7A5\uC571 \uBC31\uC5C5 \uAC00\uC838\uC624\uAE30</button>
         <button class="danger" data-action="reset-confirm">\uC624\uB298 \uCD08\uAE30\uD654</button>
       </div>
+      ${renderRecordCorrectionPanel()}
+    </section>
+  `;
+}
+function renderRecordCorrectionPanel() {
+  if (!currentDay) return "";
+  const completed = getOrderedZones().filter((zone) => hasZoneEnded(zone.id)).map((zone) => {
+    const end = latestZoneEvent(zone.id, "zone_end");
+    const payload = end?.payload;
+    const delivered = typeof payload?.delivered === "number" ? payload.delivered : 0;
+    return { zone, delivered, end };
+  }).filter((item) => item.end && item.delivered > 0);
+  return `
+    <section class="record-correction">
+      <h3>\uAE30\uB85D \uC815\uC815</h3>
+      <p class="hint">\uB85C\uADF8 \uD654\uBA74\uC740 \uBCF4\uAE30 \uC804\uC6A9\uC785\uB2C8\uB2E4. \uC798\uBABB \uC644\uB8CC\uD55C \uAD6C\uC5ED\uC744 \uC5EC\uAE30\uC11C \uB3C4\uC6B0\uBBF8 \uBC30\uC1A1\uC73C\uB85C \uC804\uD658\uD569\uB2C8\uB2E4.</p>
+      ${completed.length === 0 ? `<p class="empty-state">\uC804\uD658\uD560 \uC644\uB8CC \uAD6C\uC5ED\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</p>` : `
+        <div class="correction-list">
+          ${completed.map(({ zone, delivered }) => `
+            <article>
+              <strong>${escapeHtml(zone.name)}</strong>
+              <p>${delivered}\uAC1C \xB7 ${zone.order}\uAD6C\uC5ED</p>
+              <div class="segmented">
+                <button data-action="convert-zone-helper-free" data-zone="${zone.id}">\uB3C4\uC6B0\uBBF8 \uBB34\uB8CC\uB85C \uC804\uD658</button>
+                <button data-action="convert-zone-helper-paid" data-zone="${zone.id}">\uB3C4\uC6B0\uBBF8 \uC720\uB8CC\uB85C \uC804\uD658</button>
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      `}
     </section>
   `;
 }
@@ -2507,7 +2566,7 @@ function buildLogEntriesForDay(dayRecord, calculation) {
       const minutes = typeof payload?.minutes === "number" ? `${payload.minutes}\uBD84` : "\uC2DC\uAC04 \uBBF8\uC785\uB825";
       entries.push({ title, time, detail: `${minutes}${zoneName ? ` / ${zoneName}` : ""}`, kind: "event" });
     } else if (event.type === "helper_add") {
-      entries.push({ title: "\uB3C4\uC6B0\uBBF8 \uCD94\uAC00", time, detail: zoneName, kind: "event" });
+      entries.push({ title: getHelperEventTitle(payload), time, detail: getHelperEventDetail(payload), kind: "event" });
     } else if (event.type === "day_close") {
       entries.push({ title: "\uC5C5\uBB34 \uC885\uB8CC", time, detail: "\uC624\uB298 \uC5C5\uBB34\uAC00 \uC885\uB8CC\uB410\uC2B5\uB2C8\uB2E4.", kind: "done" });
     }
@@ -2568,6 +2627,19 @@ function logEventPriority(event) {
     default:
       return 100;
   }
+}
+function getHelperEventTitle(payload) {
+  const kind = typeof payload?.helperKind === "string" ? payload.helperKind : "";
+  if (kind === "free_received") return "\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC";
+  if (kind === "paid_received") return "\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC";
+  if (payload?.unpaid === true) return "\uBB34\uBCF4\uC218 \uB3C4\uC6B0\uBBF8";
+  return "\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1";
+}
+function getHelperEventDetail(payload) {
+  const quantity = typeof payload?.quantity === "number" ? `${payload.quantity}\uAC1C` : "";
+  const kind = typeof payload?.helperKind === "string" ? payload.helperKind : "";
+  const rule = kind === "free_received" ? "\uD6A8\uC728 \uC81C\uC678" : kind === "paid_received" ? "\uD6A8\uC728 \uD3EC\uD568" : "";
+  return [quantity, rule].filter(Boolean).join(" \xB7 ") || "\uC2DC\uAC04 \uAE30\uB85D";
 }
 function buildMijuStartDetailForDay(dayRecord) {
   const checkpoint = getMijuCheckpointForDay(dayRecord);
@@ -2795,6 +2867,14 @@ function renderEventPanel() {
         <label class="wide">\uBA54\uBAA8<input id="event-note" type="text" maxlength="80" placeholder="\uC608: \uD790\uC2A4 \uC804 \uC5C5\uCCB4 \uBC29\uBB38"></label>
       </div>
       <button data-action="add-event">\uC774\uBCA4\uD2B8 \uCD94\uAC00</button>
+      <div class="helper-actions">
+        <label>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC218\uB7C9<input id="helper-received-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="\uC608: 13"></label>
+        <div class="segmented">
+          <button data-action="add-helper-free">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC</button>
+          <button data-action="add-helper-paid">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC</button>
+        </div>
+        <p class="hint">\uBB34\uB8CC\uB294 \uCD1D\uC218\uB7C9\uC5D0\uB294 \uD3EC\uD568\uD558\uACE0 \uD6A8\uC728\uC5D0\uC11C\uB294 \uC81C\uC678\uD569\uB2C8\uB2E4. \uC720\uB8CC\uB294 \uCD1D\uC218\uB7C9\uACFC \uD6A8\uC728\uC5D0 \uBAA8\uB450 \uD3EC\uD568\uD569\uB2C8\uB2E4.</p>
+      </div>
     </section>
   `;
 }
@@ -3172,6 +3252,24 @@ async function handleAction(button) {
     await saveAndRender();
     return;
   }
+  if (action === "add-helper-free") {
+    addReceivedHelper("free_received");
+    await saveAndRender();
+    return;
+  }
+  if (action === "add-helper-paid") {
+    addReceivedHelper("paid_received");
+    await saveAndRender();
+    return;
+  }
+  if (action === "convert-zone-helper-free" && zoneId) {
+    await convertCompletedZoneToHelper(zoneId, "free_received");
+    return;
+  }
+  if (action === "convert-zone-helper-paid" && zoneId) {
+    await convertCompletedZoneToHelper(zoneId, "paid_received");
+    return;
+  }
   if (action === "add-alt-zone") {
     addExtraZone("alt");
     await saveAndRender();
@@ -3348,13 +3446,109 @@ function addIncidentEvent() {
     note: note || void 0
   });
 }
-function saveMijuCheckpoint() {
+function addReceivedHelper(kind) {
   if (!currentDay) return;
-  const parts = readMijuDetailParts();
-  if (!parts.ok) {
-    toast(parts.message ?? "A\uAD6C\uAC04 \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.");
+  const quantity = readLimitedNumber("#helper-received-count", 3);
+  if (quantity <= 0) {
+    toast("\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC218\uB7C9\uC744 \uC785\uB825\uD558\uC138\uC694.");
     return;
   }
+  const label = getHelperKindLabel(kind);
+  addReceivedHelperRecord({
+    kind,
+    quantity,
+    at: readOptionalTimeInput("#event-at") ?? nowIso(),
+    name: label,
+    memo: readText("#event-note", "")
+  });
+  toast(`${label} ${quantity}\uAC1C\uB97C \uAE30\uB85D\uD588\uC2B5\uB2C8\uB2E4.`);
+}
+async function convertCompletedZoneToHelper(zoneId, kind) {
+  if (!currentDay) return;
+  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
+  const end = latestZoneEvent(zoneId, "zone_end");
+  const payload = end?.payload;
+  const quantity = typeof payload?.delivered === "number" ? payload.delivered : 0;
+  if (!zone || !end || quantity <= 0) {
+    toast("\uC804\uD658\uD560 \uC644\uB8CC \uAE30\uB85D\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+    return;
+  }
+  const label = getHelperKindLabel(kind);
+  if (!confirm(`${zone.name} ${quantity}\uAC1C\uB97C ${label}\uC73C\uB85C \uC804\uD658\uD560\uAE4C\uC694? \uC804\uD658 \uC804 \uBC31\uC5C5\uC744 \uBA3C\uC800 \uB9CC\uB4ED\uB2C8\uB2E4.`)) return;
+  await downloadPreparedSnapshot("helper-convert-before", { kind: "date", date: currentDay.date });
+  const linkedEventIds = currentDay.timeline.filter((event) => event.zoneId === zoneId).map((event) => event.id);
+  const at = end.at;
+  currentDay = {
+    ...currentDay,
+    timeline: currentDay.timeline.filter((event) => event.zoneId !== zoneId),
+    zones: currentDay.zones.filter((candidate) => candidate.id !== zoneId),
+    adjustments: [
+      ...currentDay.adjustments,
+      {
+        id: `helper-convert-${Date.now()}`,
+        eventId: end.id,
+        reason: "completed_zone_to_helper",
+        note: `${zone.name} ${quantity} -> ${label}`,
+        createdAt: nowIso()
+      }
+    ],
+    meta: {
+      ...currentDay.meta,
+      updatedAt: nowIso(),
+      recoveryStatus: currentDay.meta.recoveryStatus === "none" ? "needsReview" : currentDay.meta.recoveryStatus
+    }
+  };
+  normalizeZoneOrders();
+  addReceivedHelperRecord({
+    kind,
+    quantity,
+    at,
+    name: label,
+    memo: `${zone.name} \uC644\uB8CC \uAE30\uB85D\uC5D0\uC11C \uC804\uD658`,
+    sourceZoneId: zoneId,
+    previousEventIds: linkedEventIds
+  });
+  toast(`${label}\uC73C\uB85C \uC804\uD658\uD588\uC2B5\uB2C8\uB2E4.`);
+  await saveAndRender();
+}
+function addReceivedHelperRecord(input) {
+  if (!currentDay) return;
+  const helperId = `helper-${input.kind}-${Date.now()}`;
+  currentDay = createEvent(currentDay, {
+    type: "helper_add",
+    at: input.at,
+    payload: {
+      helperId,
+      name: input.name,
+      action: "add",
+      helperKind: input.kind,
+      quantity: input.quantity,
+      countsForEfficiency: input.kind === "paid_received",
+      sourceZoneId: input.sourceZoneId
+    },
+    note: input.memo || void 0
+  });
+  currentDay.helpers = [
+    ...currentDay.helpers,
+    {
+      id: helperId,
+      name: input.name,
+      linkedEventIds: [currentDay.timeline.at(-1).id, ...input.previousEventIds ?? []],
+      memo: input.memo,
+      kind: input.kind,
+      quantity: input.quantity,
+      countsForEfficiency: input.kind === "paid_received"
+    }
+  ];
+}
+function saveMijuCheckpoint() {
+  if (!currentDay) return;
+  const parts = readMijuInputParts();
+  if (parts.one + parts.two + parts.three <= 0) {
+    toast("1/2/3\uB3D9 \uC218\uB7C9\uC744 \uBA3C\uC800 \uC785\uB825\uD558\uC138\uC694.");
+    return;
+  }
+  const aTotal = parts.one + parts.two + parts.three;
   currentDay = createEvent(currentDay, {
     type: "manual_adjust",
     at: nowIso(),
@@ -3365,11 +3559,11 @@ function saveMijuCheckpoint() {
       building2Total: parts.two,
       building3Total: parts.three,
       restTotal: parts.rest,
-      aTotal: parts.aTotal,
-      total: parts.detailTotal
+      aTotal,
+      total: aTotal + parts.rest
     }
   });
-  toast(`A\uAD6C\uAC04 \uC800\uC7A5: ${parts.aTotal}\uAC1C`);
+  toast(`A\uAD6C\uAC04 \uC800\uC7A5: ${aTotal}\uAC1C`);
 }
 function clearMijuCheckpoint() {
   if (!currentDay) return;
@@ -3406,20 +3600,21 @@ async function addZoneEnd(zoneId) {
     toast("\uC815\uB9AC \uC644\uB8CC\uB97C \uBA3C\uC800 \uAE30\uB85D\uD574\uC57C \uD569\uB2C8\uB2E4.");
     return;
   }
-  const mijuParts = zoneId === "miju" ? readMijuPayloadParts() : void 0;
+  const mijuInput = zoneId === "miju" ? readMijuInputParts() : void 0;
   const deliveredInput = zoneId === "miju" ? void 0 : readZoneDelivered(zoneId);
+  if (zoneId === "miju" && mijuInput?.hasDetail && !mijuInput.totalHasValue) {
+    toast("\uBBF8\uC8FC \uC804\uCCB4 \uC218\uB7C9\uC744 \uC785\uB825\uD574\uC57C \uB098\uBA38\uC9C0\uB97C \uC790\uB3D9 \uACC4\uC0B0\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.");
+    return;
+  }
+  const rawDelivered = mijuInput?.total ?? deliveredInput?.value ?? 0;
+  const hasValue = mijuInput ? mijuInput.totalHasValue || mijuInput.hasDetail : Boolean(deliveredInput?.hasValue);
+  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
+  if (delivered === void 0) return;
+  const mijuParts = mijuInput ? buildMijuPartsFromZoneTotal(mijuInput, delivered) : void 0;
   if (mijuParts?.ok === false) {
     toast(mijuParts.message ?? "\uBBF8\uC8FC \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.");
     return;
   }
-  if (zoneId === "miju" && mijuParts?.hasDetail && !mijuParts.totalHasValue) {
-    toast("\uBBF8\uC8FC \uC804\uCCB4 \uC218\uB7C9\uC744 \uC785\uB825\uD574\uC57C \uB098\uBA38\uC9C0\uB97C \uC790\uB3D9 \uACC4\uC0B0\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.");
-    return;
-  }
-  const rawDelivered = mijuParts?.delivered ?? deliveredInput?.value ?? 0;
-  const hasValue = mijuParts ? mijuParts.totalHasValue || mijuParts.hasDetail : Boolean(deliveredInput?.hasValue);
-  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
-  if (delivered === void 0) return;
   currentDay = createEvent(currentDay, {
     type: "zone_end",
     at: nowIso(),
@@ -3456,16 +3651,17 @@ async function correctCleanup(zoneId) {
 }
 async function saveCompletedZoneEdit(zoneId) {
   if (!currentDay) return;
-  const editParts = zoneId === "miju" ? readMijuEditParts(zoneId) : void 0;
+  const mijuEditInput = zoneId === "miju" ? readMijuEditInputParts(zoneId) : void 0;
+  const deliveredInput = zoneId === "miju" ? void 0 : readLimitedNumberField(`#edit-${zoneId}-delivered`, 3);
+  const rawDelivered = mijuEditInput?.total ?? deliveredInput?.value ?? 0;
+  const hasValue = mijuEditInput ? mijuEditInput.totalHasValue || mijuEditInput.hasDetail : Boolean(deliveredInput?.hasValue);
+  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
+  if (delivered === void 0) return;
+  const editParts = mijuEditInput ? buildMijuPartsFromZoneTotal(mijuEditInput, delivered) : void 0;
   if (editParts?.ok === false) {
     toast(editParts.message ?? "\uC218\uC815 \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.");
     return;
   }
-  const deliveredInput = zoneId === "miju" ? void 0 : readLimitedNumberField(`#edit-${zoneId}-delivered`, 3);
-  const rawDelivered = editParts?.delivered ?? deliveredInput?.value ?? 0;
-  const hasValue = editParts ? editParts.totalHasValue || editParts.hasDetail : Boolean(deliveredInput?.hasValue);
-  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
-  if (delivered === void 0) return;
   const start = latestZoneEvent(zoneId, "zone_start");
   const end = latestZoneEvent(zoneId, "zone_end");
   const sortingStart = latestZoneEvent(zoneId, "sorting_start");
@@ -3890,6 +4086,9 @@ function getZoneName2(zoneId) {
   if (zoneId.startsWith("alt-")) return "\uB300\uCCB4\uBC30\uC1A1";
   return "\uCD94\uAC00 \uAD6C\uC5ED";
 }
+function getHelperKindLabel(kind) {
+  return kind === "free_received" ? "\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC" : "\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC";
+}
 function getDefaultZoneOrder(zoneId) {
   if (zoneId === "miju") return 1;
   if (zoneId === "hils") return 2;
@@ -3980,13 +4179,10 @@ function readZoneDelivered(zoneId) {
   return readLimitedNumberField("#extra-count", 3);
 }
 function readMijuPayloadParts() {
-  const parts = readMijuDetailParts();
-  return {
-    ...parts,
-    totalHasValue: readLimitedNumberField("#miju-total-count", 3).hasValue
-  };
+  const input = readMijuInputParts();
+  return buildMijuPartsFromZoneTotal(input, input.total);
 }
-function readMijuDetailParts() {
+function readMijuInputParts() {
   const one = readLimitedNumberField("#miju-1-count", 3);
   const two = readLimitedNumberField("#miju-2-count", 3);
   const three = readLimitedNumberField("#miju-3-count", 3);
@@ -3999,31 +4195,44 @@ function readMijuDetailParts() {
     rest: rest.hasValue ? rest.value : checkpoint?.rest || 0
   };
   const total = readLimitedNumberField("#miju-total-count", 3);
-  return toMijuParts(resolveMijuDetailQuantity({
+  return {
     total: total.value,
     totalHasValue: total.hasValue,
     one: resolved.one,
     two: resolved.two,
     three: resolved.three,
     rest: resolved.rest,
-    restHasValue: rest.hasValue || Boolean(checkpoint?.rest)
-  }), total.hasValue);
+    restHasValue: rest.hasValue || Boolean(checkpoint?.rest),
+    hasDetail: resolved.one + resolved.two + resolved.three > 0 || rest.hasValue || Boolean(checkpoint?.rest)
+  };
 }
-function readMijuEditParts(zoneId) {
+function readMijuEditInputParts(zoneId) {
   const one = readLimitedNumberField(`#edit-${zoneId}-1`, 3);
   const two = readLimitedNumberField(`#edit-${zoneId}-2`, 3);
   const three = readLimitedNumberField(`#edit-${zoneId}-3`, 3);
   const rest = readLimitedNumberField(`#edit-${zoneId}-rest`, 3);
   const total = readLimitedNumberField(`#edit-${zoneId}-total`, 3);
-  return toMijuParts(resolveMijuDetailQuantity({
+  return {
     total: total.value,
     totalHasValue: total.hasValue,
     one: one.value,
     two: two.value,
     three: three.value,
     rest: rest.value,
-    restHasValue: rest.hasValue
-  }), total.hasValue);
+    restHasValue: rest.hasValue,
+    hasDetail: one.hasValue || two.hasValue || three.hasValue || rest.hasValue
+  };
+}
+function buildMijuPartsFromZoneTotal(input, zoneDelivered) {
+  return toMijuParts(resolveMijuDetailQuantity({
+    total: zoneDelivered,
+    totalHasValue: input.totalHasValue,
+    one: input.one,
+    two: input.two,
+    three: input.three,
+    rest: input.rest,
+    restHasValue: input.restHasValue
+  }), input.totalHasValue);
 }
 function resolveValidatedDelivered(zoneId, entered, hasValue) {
   if (!currentDay) return void 0;
@@ -4059,10 +4268,21 @@ function getExpectedTotal2() {
 }
 function getCompletedDeliveredTotal(excludingZoneId) {
   if (!currentDay) return 0;
-  return currentDay.timeline.reduce((sum, event) => {
+  const zoneTotal = currentDay.timeline.reduce((sum, event) => {
     if (event.type !== "zone_end" || event.zoneId === excludingZoneId) return sum;
     const payload = event.payload;
     return sum + (typeof payload?.delivered === "number" ? payload.delivered : 0);
+  }, 0);
+  return zoneTotal + getReceivedHelperQuantityTotal();
+}
+function getReceivedHelperQuantityTotal() {
+  if (!currentDay) return 0;
+  return currentDay.timeline.reduce((sum, event) => {
+    if (event.type !== "helper_add" || !event.payload) return sum;
+    const payload = event.payload;
+    if (payload.unpaid === true) return sum;
+    if (payload.helperKind !== "free_received" && payload.helperKind !== "paid_received") return sum;
+    return sum + (typeof payload.quantity === "number" ? payload.quantity : 0);
   }, 0);
 }
 function toMijuParts(result, totalHasValue) {

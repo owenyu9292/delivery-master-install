@@ -1,0 +1,18 @@
+{
+  "name": "delivery-master-install",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx scripts/run-domain-tests.ts",
+    "check": "npm run typecheck && npm run test",
+    "check:codex": "node scripts/codex-precommit-check.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build-app.mjs",
+    "serve": "node scripts/serve-dist.mjs"
+  },
+  "devDependencies": {
+    "tsx": "^4.22.1",
+    "typescript": "^5.9.3"
+  }
+}
