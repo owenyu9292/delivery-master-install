@@ -682,6 +682,7 @@ function renderRecordCorrectionPanel(): string {
         ${selectedTarget?.type === "zone" ? renderZoneCorrectionForm(selectedTarget.zone, selectedTarget.delivered) : ""}
         ${selectedTarget?.type === "helper" ? renderHelperCorrectionForm(selectedTarget.helper) : ""}
       `}
+      ${renderMissingHelperCorrectionForm()}
     </section>
   `;
 }
@@ -702,6 +703,9 @@ function renderZoneCorrectionForm(zone: ZoneRecord, delivered: number): string {
   const bucket = getZoneBucket(currentDay!, zone.id);
   const currentKind = bucket === "miju" ? "miju" : bucket === "hils" ? "hils" : "alt";
   const customName = currentKind === "alt" ? zone.name : "";
+  const previousDelivered = getPreviousZoneDeliveredTotal(zone.id);
+  const usesCumulativeDefault = previousDelivered > 0;
+  const displayedDelivered = usesCumulativeDefault ? previousDelivered + delivered : delivered;
   return `
     <article class="correction-editor">
       <strong>${escapeHtml(zone.name)}</strong>
@@ -718,8 +722,15 @@ function renderZoneCorrectionForm(zone: ZoneRecord, delivered: number): string {
       <label>구역 이름
         <input id="correction-zone-name" type="text" value="${escapeAttribute(customName || zone.name)}">
       </label>
+      <label>수량 입력 방식
+        <select id="correction-zone-quantity-mode">
+          <option value="actual"${usesCumulativeDefault ? "" : " selected"}>이 구역 실제 수량</option>
+          <option value="cumulative"${usesCumulativeDefault ? " selected" : ""}>누적 총합에서 이전 구역 자동 차감</option>
+        </select>
+      </label>
+      <p class="hint">이전 구역 완료: ${previousDelivered}개. 누적 모드에서는 CJ 앱의 누적 총합을 넣으면 앱이 앞 구역을 빼서 저장합니다.</p>
       <label>수량
-        <input id="correction-zone-delivered" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}">
+        <input id="correction-zone-delivered" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${displayedDelivered}">
       </label>
       <div class="edit-grid compact">
         <label>시작
@@ -742,6 +753,35 @@ function renderZoneCorrectionForm(zone: ZoneRecord, delivered: number): string {
         </label>
       </div>
       <button data-action="save-zone-correction" data-zone="${escapeAttribute(zone.id)}">선택 기록 정정 반영</button>
+    </article>
+  `;
+}
+
+function renderMissingHelperCorrectionForm(): string {
+  if (!currentDay) return "";
+  const defaultAt = currentDay.timeline.find((event) => event.type === "day_close")?.at
+    ?? currentDay.timeline.at(-1)?.at
+    ?? nowIso();
+  return `
+    <article class="correction-editor">
+      <strong>누락 도우미 배송 추가</strong>
+      <p class="hint">잘못 전환됐거나 빠진 도우미 배송은 여기서 다시 추가합니다. 무료는 효율 제외, 유료는 효율 포함입니다.</p>
+      <label>도우미 종류
+        <select id="correction-helper-kind">
+          <option value="free_received">도우미 배송 무료</option>
+          <option value="paid_received">도우미 배송 유료</option>
+        </select>
+      </label>
+      <label>수량
+        <input id="correction-helper-quantity" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="">
+      </label>
+      <label>시각
+        <input id="correction-helper-at" type="datetime-local" value="${formatIsoForInput(defaultAt)}">
+      </label>
+      <label>메모
+        <input id="correction-helper-note" type="text" value="기록 정정에서 추가">
+      </label>
+      <button data-action="add-correction-helper">누락 도우미 기록 추가</button>
     </article>
   `;
 }
@@ -1685,6 +1725,10 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     await saveHelperCorrection(button.dataset.helper);
     return;
   }
+  if (action === "add-correction-helper") {
+    await addCorrectionHelper();
+    return;
+  }
   if (action === "restore-helper-zone") {
     await restoreHelperToZone(button.dataset.helper);
     return;
@@ -1939,7 +1983,7 @@ async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
   }
 
   const deliveredInput = readLimitedNumberField("#correction-zone-delivered", 3);
-  const delivered = resolveValidatedDelivered(zoneId, deliveredInput.value, deliveredInput.hasValue);
+  const delivered = resolveCorrectionDelivered(zoneId, deliveredInput.value, deliveredInput.hasValue);
   if (delivered === undefined) return;
 
   const start = latestZoneEvent(zoneId, "zone_start");
@@ -2005,6 +2049,14 @@ async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
   activeCorrectionTargetId = `zone:${zoneId}`;
   toast(`${nextName} 기록을 다시 저장했습니다.`);
   await saveAndRender();
+}
+
+function resolveCorrectionDelivered(zoneId: string, entered: number, hasValue: boolean): number | undefined {
+  const mode = readText("#correction-zone-quantity-mode", "actual");
+  if (mode !== "cumulative") {
+    return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "actual" });
+  }
+  return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "cumulative" });
 }
 
 function resolveCorrectionZoneName(kind: string, enteredName: string): string {
@@ -2134,6 +2186,36 @@ async function saveHelperCorrection(helperId?: string): Promise<void> {
     },
   };
   toast(`${label} ${quantity}개로 다시 저장했습니다.`);
+  await saveAndRender();
+}
+
+async function addCorrectionHelper(): Promise<void> {
+  if (!currentDay) return;
+  const kind = normalizeReceivedHelperKind(readText("#correction-helper-kind", "free_received"));
+  const quantityInput = readLimitedNumberField("#correction-helper-quantity", 3);
+  const at = readOptionalTimeInput("#correction-helper-at")
+    ?? currentDay.timeline.find((event) => event.type === "day_close")?.at
+    ?? currentDay.timeline.at(-1)?.at
+    ?? nowIso();
+  if (!kind) {
+    toast("도우미 종류를 선택하세요.");
+    return;
+  }
+  if (!quantityInput.hasValue || quantityInput.value <= 0) {
+    toast("누락 도우미 수량을 입력하세요.");
+    return;
+  }
+  const label = getHelperKindLabel(kind);
+  await downloadPreparedSnapshot("helper-add-correction-before", { kind: "date", date: currentDay.date });
+  addReceivedHelperRecord({
+    kind,
+    quantity: quantityInput.value,
+    at,
+    name: label,
+    memo: readText("#correction-helper-note", "기록 정정에서 추가"),
+  });
+  activeCorrectionTargetId = "";
+  toast(`${label} ${quantityInput.value}개를 추가했습니다.`);
   await saveAndRender();
 }
 
@@ -3118,15 +3200,50 @@ function buildMijuPartsFromZoneTotal(input: MijuInputParts, zoneDelivered: numbe
   }), input.totalHasValue);
 }
 
-function resolveValidatedDelivered(zoneId: string, entered: number, hasValue: boolean): number | undefined {
+function resolveValidatedDelivered(
+  zoneId: string,
+  entered: number,
+  hasValue: boolean,
+  options: { mode?: "auto" | "actual" | "cumulative" } = {},
+): number | undefined {
   if (!currentDay) return undefined;
   const zoneName = getZoneName(zoneId);
+  const mode = options.mode ?? "auto";
+  const previousDelivered = getPreviousZoneDeliveredTotal(zoneId);
+  const shouldSubtractCumulative =
+    (mode === "cumulative" || (mode === "auto" && previousDelivered > 0 && entered > previousDelivered)) &&
+    hasValue;
+  if (shouldSubtractCumulative) {
+    const adjusted = entered - previousDelivered;
+    if (adjusted <= 0) {
+      toast(`${zoneName} ${entered}개에서 앞 구역 ${previousDelivered}개를 빼면 0개 이하입니다. 수량을 확인하세요.`);
+      return undefined;
+    }
+    const adjustedResult = validateZoneQuantity({
+      zoneName,
+      entered: adjusted,
+      hasValue,
+      expectedTotal: getExpectedTotal(),
+      completedOther: previousDelivered,
+      maxReasonable: MAX_REASONABLE_ZONE,
+    });
+    if (!adjustedResult.ok) {
+      toast(adjustedResult.message ?? `${zoneName} 수량을 확인하세요.`);
+      return undefined;
+    }
+    if (adjustedResult.warning) {
+      const ok = confirm(`${adjustedResult.warning}\n\n${entered}개에서 앞 구역 ${previousDelivered}개를 빼 ${adjusted}개로 저장할까요?`);
+      return ok ? adjusted : undefined;
+    }
+    toast(`${zoneName} 누적 ${entered}개에서 앞 구역 ${previousDelivered}개를 빼 ${adjusted}개로 저장합니다.`);
+    return adjusted;
+  }
   const result = validateZoneQuantity({
     zoneName,
     entered,
     hasValue,
     expectedTotal: getExpectedTotal(),
-    completedOther: getCompletedDeliveredTotal(zoneId),
+    completedOther: previousDelivered,
     maxReasonable: MAX_REASONABLE_ZONE,
   });
 
@@ -3136,7 +3253,7 @@ function resolveValidatedDelivered(zoneId: string, entered: number, hasValue: bo
   }
 
   if (result.suggestedValue !== undefined) {
-    toast(`${zoneName} ${entered}개에서 이전 완료 ${getCompletedDeliveredTotal(zoneId)}개를 빼 ${result.suggestedValue}개로 저장합니다.`);
+    toast(`${zoneName} ${entered}개에서 앞 구역 ${previousDelivered}개를 빼 ${result.suggestedValue}개로 저장합니다.`);
     return result.suggestedValue;
   }
 
@@ -3146,6 +3263,22 @@ function resolveValidatedDelivered(zoneId: string, entered: number, hasValue: bo
   }
 
   return result.value;
+}
+
+function getPreviousZoneDeliveredTotal(zoneId: string): number {
+  if (!currentDay) return 0;
+  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
+  if (!zone) return 0;
+  const previousZoneIds = new Set(
+    currentDay.zones
+      .filter((candidate) => candidate.order < zone.order)
+      .map((candidate) => candidate.id),
+  );
+  return currentDay.timeline.reduce((sum, event) => {
+    if (event.type !== "zone_end" || !event.zoneId || !previousZoneIds.has(event.zoneId)) return sum;
+    const payload = event.payload as { delivered?: unknown } | undefined;
+    return sum + (typeof payload?.delivered === "number" ? payload.delivered : 0);
+  }, 0);
 }
 
 function getExpectedTotal(): number | undefined {

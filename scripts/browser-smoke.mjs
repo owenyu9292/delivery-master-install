@@ -105,6 +105,16 @@ async function setSelectedZoneCorrectionName(name) {
   return setValue("#correction-zone-name", name);
 }
 
+async function setSelectedZoneQuantityMode(mode) {
+  return evaluate(`(() => {
+    const select = document.querySelector("#correction-zone-quantity-mode");
+    if (!select) return false;
+    select.value = ${JSON.stringify(mode)};
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+}
+
 async function activeHelperId() {
   return evaluate(`(() => {
     const buttons = [...document.querySelectorAll('[data-action="save-helper-correction"][data-helper]')];
@@ -382,10 +392,15 @@ await click('[data-action="select-correction-target"]');
 await wait(300);
 await setSelectedZoneCorrectionKind("alt");
 await setSelectedZoneCorrectionName("과거 힐스 정정");
+await setSelectedZoneQuantityMode("actual");
 await setValue("#correction-zone-delivered", "111");
 await click('[data-action="save-zone-correction"]');
 await wait(900);
 const afterPastCorrectionEdit = await bodyText();
+await setValue("#correction-helper-quantity", "8");
+await click('[data-action="add-correction-helper"]');
+await wait(900);
+const afterPastMissingHelper = await bodyText();
 await click('[data-action="load-today"]');
 await wait(900);
 
@@ -488,6 +503,7 @@ if (selectedCustomForRepeatedEdit) {
   await wait(300);
   await setSelectedZoneCorrectionKind("alt");
   await setSelectedZoneCorrectionName("상가 정정");
+  await setSelectedZoneQuantityMode("actual");
   await setValue("#correction-zone-delivered", "6");
   await click('[data-action="save-zone-correction"]');
   await wait(900);
@@ -539,6 +555,50 @@ await wait(500);
 const afterHuge = await bodyText();
 const hugeConfirm = await evaluate("window.__lastConfirm || ''");
 
+await evaluate("window.confirm = () => true");
+await click('[data-action="reset-confirm"]');
+await wait(600);
+await click('[data-action="set-tab"][data-tab="work"]');
+await wait();
+await setValue("#expected-count", "100");
+await click('[data-action="depart"]');
+await wait();
+await click('[data-action="arrive"]');
+await wait();
+await click('[data-action="prepare-default-order"]');
+await wait();
+await click('[data-action="add-alt-zone-to-order"]');
+await wait();
+await click('[data-action="move-zone-down"][data-zone="miju"]');
+await wait();
+await click('[data-action="zone-start"][data-zone="hils"]');
+await wait();
+await click('[data-action="delivery-start"][data-zone="hils"]');
+await wait();
+await setValue("#hils-count", "13");
+await click('[data-action="zone-end"][data-zone="hils"]');
+await wait(500);
+await click('[data-action="zone-start"][data-zone="miju"]');
+await wait();
+await setValue("#miju-total-count", "32");
+await click('[data-action="zone-end"][data-zone="miju"]');
+await wait(500);
+const cumulativeAltZoneId = await evaluate(`(() => {
+  const button = [...document.querySelectorAll('[data-action="zone-start"]')]
+    .find((item) => item.textContent.includes("대체배송"));
+  return button?.dataset.zone || "";
+})()`);
+if (cumulativeAltZoneId) {
+  await click(`[data-action="zone-start"][data-zone="${cumulativeAltZoneId}"]`);
+  await wait();
+  await click(`[data-action="delivery-start"][data-zone="${cumulativeAltZoneId}"]`);
+  await wait();
+  await setValue("#extra-count", "53");
+  await click(`[data-action="zone-end"][data-zone="${cumulativeAltZoneId}"]`);
+  await wait(600);
+}
+const afterCumulativeRouteTotals = await bodyText();
+
 const screenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
 await import("node:fs").then((fs) => {
   fs.writeFileSync(screenshotName, Buffer.from(screenshot.data, "base64"));
@@ -583,6 +643,8 @@ const result = {
     && pastCorrectionLoadedText.includes("현재 정정 날짜"),
   pastCorrectionEdited: afterPastCorrectionEdit.includes("과거 힐스 정정")
     && afterPastCorrectionEdit.includes("111개"),
+  pastMissingHelperAdded: afterPastMissingHelper.includes("도우미 배송 무료")
+    && afterPastMissingHelper.includes("8개"),
   missingQuantityBlocked: !afterMissing.includes("힐스테이트 | 완료"),
   directHilsFirstComplete: afterDirectHils.includes("힐스테이트") && afterDirectHils.includes("수량 13개"),
   directAlternateComplete: afterDirectAlt.includes("대체배송") && afterDirectAlt.includes("수량 7개"),
@@ -594,6 +656,12 @@ const result = {
   correctionHelperRestoredToHils: afterHelperRestoredToHils.includes("힐스테이트") && afterHelperRestoredToHils.includes("구역 기록으로 복구"),
   correctionHelperRestoredToMiju: afterHelperRestoredToMiju.includes("미주") && afterHelperRestoredToMiju.includes("구역 기록으로 복구"),
   hugeQuantityBlockedOrWarned: !afterHuge.includes("수량 999개"),
+  cumulativeRouteTotalsByOrder: afterCumulativeRouteTotals.includes("힐스테이트")
+    && afterCumulativeRouteTotals.includes("수량 13개")
+    && afterCumulativeRouteTotals.includes("미주")
+    && afterCumulativeRouteTotals.includes("수량 19개")
+    && afterCumulativeRouteTotals.includes("대체배송")
+    && afterCumulativeRouteTotals.includes("수량 21개"),
   screenshotName,
   hugeConfirm,
   afterHugeSnippet: afterHuge.slice(afterHuge.indexOf("구역 현황"), afterHuge.indexOf("통계")).replace(/\n+/g, " | "),

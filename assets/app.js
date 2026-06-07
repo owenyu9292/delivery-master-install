@@ -2026,9 +2026,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.16-past-record-correction";
-var APP_UPDATED_LABEL = "2026-06-07 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v17";
+var APP_VERSION = "0.2.17-cumulative-correction-helper";
+var APP_UPDATED_LABEL = "2026-06-08 \uC218\uC815\uBCF8";
+var CACHE_VERSION = "v18";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -2565,6 +2565,7 @@ function renderRecordCorrectionPanel() {
         ${selectedTarget?.type === "zone" ? renderZoneCorrectionForm(selectedTarget.zone, selectedTarget.delivered) : ""}
         ${selectedTarget?.type === "helper" ? renderHelperCorrectionForm(selectedTarget.helper) : ""}
       `}
+      ${renderMissingHelperCorrectionForm()}
     </section>
   `;
 }
@@ -2583,6 +2584,9 @@ function renderZoneCorrectionForm(zone, delivered) {
   const bucket = getZoneBucket(currentDay, zone.id);
   const currentKind = bucket === "miju" ? "miju" : bucket === "hils" ? "hils" : "alt";
   const customName = currentKind === "alt" ? zone.name : "";
+  const previousDelivered = getPreviousZoneDeliveredTotal(zone.id);
+  const usesCumulativeDefault = previousDelivered > 0;
+  const displayedDelivered = usesCumulativeDefault ? previousDelivered + delivered : delivered;
   return `
     <article class="correction-editor">
       <strong>${escapeHtml(zone.name)}</strong>
@@ -2599,8 +2603,15 @@ function renderZoneCorrectionForm(zone, delivered) {
       <label>\uAD6C\uC5ED \uC774\uB984
         <input id="correction-zone-name" type="text" value="${escapeAttribute(customName || zone.name)}">
       </label>
+      <label>\uC218\uB7C9 \uC785\uB825 \uBC29\uC2DD
+        <select id="correction-zone-quantity-mode">
+          <option value="actual"${usesCumulativeDefault ? "" : " selected"}>\uC774 \uAD6C\uC5ED \uC2E4\uC81C \uC218\uB7C9</option>
+          <option value="cumulative"${usesCumulativeDefault ? " selected" : ""}>\uB204\uC801 \uCD1D\uD569\uC5D0\uC11C \uC774\uC804 \uAD6C\uC5ED \uC790\uB3D9 \uCC28\uAC10</option>
+        </select>
+      </label>
+      <p class="hint">\uC774\uC804 \uAD6C\uC5ED \uC644\uB8CC: ${previousDelivered}\uAC1C. \uB204\uC801 \uBAA8\uB4DC\uC5D0\uC11C\uB294 CJ \uC571\uC758 \uB204\uC801 \uCD1D\uD569\uC744 \uB123\uC73C\uBA74 \uC571\uC774 \uC55E \uAD6C\uC5ED\uC744 \uBE7C\uC11C \uC800\uC7A5\uD569\uB2C8\uB2E4.</p>
       <label>\uC218\uB7C9
-        <input id="correction-zone-delivered" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${delivered}">
+        <input id="correction-zone-delivered" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${displayedDelivered}">
       </label>
       <div class="edit-grid compact">
         <label>\uC2DC\uC791
@@ -2623,6 +2634,32 @@ function renderZoneCorrectionForm(zone, delivered) {
         </label>
       </div>
       <button data-action="save-zone-correction" data-zone="${escapeAttribute(zone.id)}">\uC120\uD0DD \uAE30\uB85D \uC815\uC815 \uBC18\uC601</button>
+    </article>
+  `;
+}
+function renderMissingHelperCorrectionForm() {
+  if (!currentDay) return "";
+  const defaultAt = currentDay.timeline.find((event) => event.type === "day_close")?.at ?? currentDay.timeline.at(-1)?.at ?? nowIso();
+  return `
+    <article class="correction-editor">
+      <strong>\uB204\uB77D \uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uCD94\uAC00</strong>
+      <p class="hint">\uC798\uBABB \uC804\uD658\uB410\uAC70\uB098 \uBE60\uC9C4 \uB3C4\uC6B0\uBBF8 \uBC30\uC1A1\uC740 \uC5EC\uAE30\uC11C \uB2E4\uC2DC \uCD94\uAC00\uD569\uB2C8\uB2E4. \uBB34\uB8CC\uB294 \uD6A8\uC728 \uC81C\uC678, \uC720\uB8CC\uB294 \uD6A8\uC728 \uD3EC\uD568\uC785\uB2C8\uB2E4.</p>
+      <label>\uB3C4\uC6B0\uBBF8 \uC885\uB958
+        <select id="correction-helper-kind">
+          <option value="free_received">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC</option>
+          <option value="paid_received">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC</option>
+        </select>
+      </label>
+      <label>\uC218\uB7C9
+        <input id="correction-helper-quantity" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="">
+      </label>
+      <label>\uC2DC\uAC01
+        <input id="correction-helper-at" type="datetime-local" value="${formatIsoForInput(defaultAt)}">
+      </label>
+      <label>\uBA54\uBAA8
+        <input id="correction-helper-note" type="text" value="\uAE30\uB85D \uC815\uC815\uC5D0\uC11C \uCD94\uAC00">
+      </label>
+      <button data-action="add-correction-helper">\uB204\uB77D \uB3C4\uC6B0\uBBF8 \uAE30\uB85D \uCD94\uAC00</button>
     </article>
   `;
 }
@@ -3429,6 +3466,10 @@ async function handleAction(button) {
     await saveHelperCorrection(button.dataset.helper);
     return;
   }
+  if (action === "add-correction-helper") {
+    await addCorrectionHelper();
+    return;
+  }
   if (action === "restore-helper-zone") {
     await restoreHelperToZone(button.dataset.helper);
     return;
@@ -3662,7 +3703,7 @@ async function saveSelectedZoneCorrection(zoneId) {
     return;
   }
   const deliveredInput = readLimitedNumberField("#correction-zone-delivered", 3);
-  const delivered = resolveValidatedDelivered(zoneId, deliveredInput.value, deliveredInput.hasValue);
+  const delivered = resolveCorrectionDelivered(zoneId, deliveredInput.value, deliveredInput.hasValue);
   if (delivered === void 0) return;
   const start = latestZoneEvent(zoneId, "zone_start");
   const end = latestZoneEvent(zoneId, "zone_end");
@@ -3724,6 +3765,13 @@ async function saveSelectedZoneCorrection(zoneId) {
   activeCorrectionTargetId = `zone:${zoneId}`;
   toast(`${nextName} \uAE30\uB85D\uC744 \uB2E4\uC2DC \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.`);
   await saveAndRender();
+}
+function resolveCorrectionDelivered(zoneId, entered, hasValue) {
+  const mode = readText("#correction-zone-quantity-mode", "actual");
+  if (mode !== "cumulative") {
+    return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "actual" });
+  }
+  return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "cumulative" });
 }
 function resolveCorrectionZoneName(kind, enteredName) {
   if (kind === "miju") return "\uBBF8\uC8FC";
@@ -3846,6 +3894,32 @@ async function saveHelperCorrection(helperId) {
     }
   };
   toast(`${label} ${quantity}\uAC1C\uB85C \uB2E4\uC2DC \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.`);
+  await saveAndRender();
+}
+async function addCorrectionHelper() {
+  if (!currentDay) return;
+  const kind = normalizeReceivedHelperKind(readText("#correction-helper-kind", "free_received"));
+  const quantityInput = readLimitedNumberField("#correction-helper-quantity", 3);
+  const at = readOptionalTimeInput("#correction-helper-at") ?? currentDay.timeline.find((event) => event.type === "day_close")?.at ?? currentDay.timeline.at(-1)?.at ?? nowIso();
+  if (!kind) {
+    toast("\uB3C4\uC6B0\uBBF8 \uC885\uB958\uB97C \uC120\uD0DD\uD558\uC138\uC694.");
+    return;
+  }
+  if (!quantityInput.hasValue || quantityInput.value <= 0) {
+    toast("\uB204\uB77D \uB3C4\uC6B0\uBBF8 \uC218\uB7C9\uC744 \uC785\uB825\uD558\uC138\uC694.");
+    return;
+  }
+  const label = getHelperKindLabel(kind);
+  await downloadPreparedSnapshot("helper-add-correction-before", { kind: "date", date: currentDay.date });
+  addReceivedHelperRecord({
+    kind,
+    quantity: quantityInput.value,
+    at,
+    name: label,
+    memo: readText("#correction-helper-note", "\uAE30\uB85D \uC815\uC815\uC5D0\uC11C \uCD94\uAC00")
+  });
+  activeCorrectionTargetId = "";
+  toast(`${label} ${quantityInput.value}\uAC1C\uB97C \uCD94\uAC00\uD588\uC2B5\uB2C8\uB2E4.`);
   await saveAndRender();
 }
 async function restoreHelperToZone(helperId) {
@@ -4674,15 +4748,45 @@ function buildMijuPartsFromZoneTotal(input, zoneDelivered) {
     restHasValue: input.restHasValue
   }), input.totalHasValue);
 }
-function resolveValidatedDelivered(zoneId, entered, hasValue) {
+function resolveValidatedDelivered(zoneId, entered, hasValue, options = {}) {
   if (!currentDay) return void 0;
   const zoneName = getZoneName2(zoneId);
+  const mode = options.mode ?? "auto";
+  const previousDelivered = getPreviousZoneDeliveredTotal(zoneId);
+  const shouldSubtractCumulative = (mode === "cumulative" || mode === "auto" && previousDelivered > 0 && entered > previousDelivered) && hasValue;
+  if (shouldSubtractCumulative) {
+    const adjusted = entered - previousDelivered;
+    if (adjusted <= 0) {
+      toast(`${zoneName} ${entered}\uAC1C\uC5D0\uC11C \uC55E \uAD6C\uC5ED ${previousDelivered}\uAC1C\uB97C \uBE7C\uBA74 0\uAC1C \uC774\uD558\uC785\uB2C8\uB2E4. \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.`);
+      return void 0;
+    }
+    const adjustedResult = validateZoneQuantity({
+      zoneName,
+      entered: adjusted,
+      hasValue,
+      expectedTotal: getExpectedTotal2(),
+      completedOther: previousDelivered,
+      maxReasonable: MAX_REASONABLE_ZONE
+    });
+    if (!adjustedResult.ok) {
+      toast(adjustedResult.message ?? `${zoneName} \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.`);
+      return void 0;
+    }
+    if (adjustedResult.warning) {
+      const ok = confirm(`${adjustedResult.warning}
+
+${entered}\uAC1C\uC5D0\uC11C \uC55E \uAD6C\uC5ED ${previousDelivered}\uAC1C\uB97C \uBE7C ${adjusted}\uAC1C\uB85C \uC800\uC7A5\uD560\uAE4C\uC694?`);
+      return ok ? adjusted : void 0;
+    }
+    toast(`${zoneName} \uB204\uC801 ${entered}\uAC1C\uC5D0\uC11C \uC55E \uAD6C\uC5ED ${previousDelivered}\uAC1C\uB97C \uBE7C ${adjusted}\uAC1C\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4.`);
+    return adjusted;
+  }
   const result = validateZoneQuantity({
     zoneName,
     entered,
     hasValue,
     expectedTotal: getExpectedTotal2(),
-    completedOther: getCompletedDeliveredTotal(zoneId),
+    completedOther: previousDelivered,
     maxReasonable: MAX_REASONABLE_ZONE
   });
   if (!result.ok) {
@@ -4690,7 +4794,7 @@ function resolveValidatedDelivered(zoneId, entered, hasValue) {
     return void 0;
   }
   if (result.suggestedValue !== void 0) {
-    toast(`${zoneName} ${entered}\uAC1C\uC5D0\uC11C \uC774\uC804 \uC644\uB8CC ${getCompletedDeliveredTotal(zoneId)}\uAC1C\uB97C \uBE7C ${result.suggestedValue}\uAC1C\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4.`);
+    toast(`${zoneName} ${entered}\uAC1C\uC5D0\uC11C \uC55E \uAD6C\uC5ED ${previousDelivered}\uAC1C\uB97C \uBE7C ${result.suggestedValue}\uAC1C\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4.`);
     return result.suggestedValue;
   }
   if (result.warning) {
@@ -4701,29 +4805,23 @@ function resolveValidatedDelivered(zoneId, entered, hasValue) {
   }
   return result.value;
 }
+function getPreviousZoneDeliveredTotal(zoneId) {
+  if (!currentDay) return 0;
+  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
+  if (!zone) return 0;
+  const previousZoneIds = new Set(
+    currentDay.zones.filter((candidate) => candidate.order < zone.order).map((candidate) => candidate.id)
+  );
+  return currentDay.timeline.reduce((sum, event) => {
+    if (event.type !== "zone_end" || !event.zoneId || !previousZoneIds.has(event.zoneId)) return sum;
+    const payload = event.payload;
+    return sum + (typeof payload?.delivered === "number" ? payload.delivered : 0);
+  }, 0);
+}
 function getExpectedTotal2() {
   const depart = currentDay?.timeline.find((event) => event.type === "depart_jinjeop");
   const payload = depart?.payload;
   return typeof payload?.total === "number" && payload.total > 0 ? payload.total : void 0;
-}
-function getCompletedDeliveredTotal(excludingZoneId) {
-  if (!currentDay) return 0;
-  const zoneTotal = currentDay.timeline.reduce((sum, event) => {
-    if (event.type !== "zone_end" || event.zoneId === excludingZoneId) return sum;
-    const payload = event.payload;
-    return sum + (typeof payload?.delivered === "number" ? payload.delivered : 0);
-  }, 0);
-  return zoneTotal + getReceivedHelperQuantityTotal();
-}
-function getReceivedHelperQuantityTotal() {
-  if (!currentDay) return 0;
-  return currentDay.timeline.reduce((sum, event) => {
-    if (event.type !== "helper_add" || !event.payload) return sum;
-    const payload = event.payload;
-    if (payload.unpaid === true) return sum;
-    if (payload.helperKind !== "free_received" && payload.helperKind !== "paid_received") return sum;
-    return sum + (typeof payload.quantity === "number" ? payload.quantity : 0);
-  }, 0);
 }
 function toMijuParts(result, totalHasValue) {
   return {
