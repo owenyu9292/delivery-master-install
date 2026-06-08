@@ -1,5 +1,12 @@
 # 2026-06-07
 
+- 2026-06-08 문서/칸반 운영 기준 정리
+  - 기록자: 일반 작업창 / 채널: main
+  - 핫픽스 채널용 별도 칸반을 만들지 않고, 일반 작업창과 핫픽스 채널이 같은 작업 보드를 사용하도록 정리했다.
+  - 같은 작업 보드 안에서 `기록자`와 `채널`을 남겨 작업 출처를 구분하기로 했다.
+  - `HOTFIX_HANDOFF.md`는 최신 5개 핫픽스 요약과 새 대화 진입점만 담당하고, 실제 할 일/진행/완료/보류는 `todo.md`, `progress.md`, `unresolved.md`, `changelog.md`에서 관리한다.
+  - 수정 파일: `instruction.md`, `HOTFIX_HANDOFF.md`, `todo.md`, `progress.md`, `changelog.md`.
+
 - 2026-06-08 v19 `phone-backup-restore`
   - 백업설정에 `개발앱 백업 복구` 버튼을 추가했다.
   - 정상화된 개발앱 백업 JSON을 기존 날짜에 덮어쓸 수 있게 했다.

@@ -29,6 +29,10 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - 최신 업데이트 기록은 최대 5개만 유지한다.
 - 6개째 업데이트를 추가할 때는 가장 오래된 업데이트 항목을 삭제하고 최신 5개만 남긴다.
 - 핫픽스 채널은 가벼워야 하므로 오래된 회고, 긴 로그, 세부 검수 출력은 `progress.md`와 `changelog.md`에 남긴다.
+- 핫픽스 채널용 별도 칸반은 만들지 않는다.
+- 핫픽스 채널과 일반 작업창은 같은 작업 보드(`todo.md`, `progress.md`, `unresolved.md`, `changelog.md`)를 사용한다.
+- 작업 보드에는 기록자/채널을 남긴다. 예: `기록자: 핫픽스 채널`, `채널: hotfix`.
+- 핫픽스 채널은 이 문서에 최신 5개 요약만 유지하고, 실제 할 일/진행/완료/보류 관리는 같은 작업 보드에 기록한다.
 
 ## 0-2. 최근 핫픽스 업데이트: 최신 5개만 유지
 
