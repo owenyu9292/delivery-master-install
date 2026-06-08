@@ -6,6 +6,11 @@
   - 같은 작업 보드 안에서 `기록자`와 `채널`을 남겨 작업 출처를 구분하기로 했다.
   - `HOTFIX_HANDOFF.md`는 최신 5개 핫픽스 요약과 새 대화 진입점만 담당하고, 실제 할 일/진행/완료/보류는 `todo.md`, `progress.md`, `unresolved.md`, `changelog.md`에서 관리한다.
   - 수정 파일: `instruction.md`, `HOTFIX_HANDOFF.md`, `todo.md`, `progress.md`, `changelog.md`.
+- 2026-06-08 `HOTFIX_HANDOFF.md` v19 기준 정리
+  - 기록자: 일반 작업창 / 채널: main
+  - 하단에 남아 있던 v17/v14 현재 기준 문구를 v19 기준으로 정리했다.
+  - `새 대화창 첫 메시지 추천`, `현재 git 상태 요약`, `current-source` 주의 문구를 v19 기준으로 갱신했다.
+  - 과거 구현 설명은 핫픽스 채널이 오판하지 않도록 `현재 v19 기준 핵심 기능`으로 압축했다.
 
 - 2026-06-08 v19 `phone-backup-restore`
   - 백업설정에 `개발앱 백업 복구` 버튼을 추가했다.
@@ -938,7 +943,9 @@ git 작업:
 
 배포 결과:
 
-- source 커밋:  6b579a Allow direct delivery zone completion`n- 배포 저장소 커밋: 33751c9 Deploy direct delivery hotfix v13`n- GitHub Pages 원격 sw.js에서 delivery-master-install-v13 확인.
+- source 커밋: 6b579a Allow direct delivery zone completion
+- 배포 저장소 커밋: 33751c9 Deploy direct delivery hotfix v13
+- GitHub Pages 원격 sw.js에서 delivery-master-install-v13 확인.
 
 남은 위험:
 
