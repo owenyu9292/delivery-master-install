@@ -13,8 +13,8 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - Season2 PWA는 보관/원본 백업 앱이며, 현재 핫픽스 대상이 아니다.
 - `C:\Codex55Workspace\delivery-master\season2`는 건드리지 않는다.
 - `SEASON2_SAFETY_PLAN.md`, `season2/README.md`는 잘못 수정됐다가 복구 완료된 상태다.
-- 현재 기준 배포 버전은 **v20**이다.
-- live `sw.js`에서 `delivery-master-install-v20` 반영 여부를 먼저 확인한다.
+- 현재 기준 배포 버전은 **v21**이다.
+- live `sw.js`에서 `delivery-master-install-v21` 반영 여부를 먼저 확인한다.
 
 ## 0-1. 핫픽스 채널 운영 목적
 
@@ -36,35 +36,33 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 
 ## 0-2. 최근 핫픽스 업데이트: 최신 5개만 유지
 
-1. v20 `zone-helper-dedup`
+1. v21 `risk-quantity-recovery`
+   - 과대 오스캔/위험 수량 입력은 `confirm` 한 번으로 저장하지 않음.
+   - 위험 수량은 저장을 멈추고 `입력 다시 하기`, `누적 총합으로 계산`, `이 구역 실제 수량 저장`, `예외 저장` 복구 패널을 먼저 보여줌.
+   - 예외 저장은 timeline payload에 `quantityOverride` 흔적을 남김.
+   - 기록 정정 시간 입력은 날짜+시간이 아니라 시간 전용 입력으로 변경.
+2. v20 `zone-helper-dedup`
    - 구역 위치에서 기록한 무료/유료 도우미는 구역 내부 동행/기여로 처리.
    - 구역 도우미 수량을 입력해도 총 배송 수량과 효율 분자에 중복 합산하지 않음.
    - 구역 위치에서는 도우미 수량 빈칸 저장 허용.
    - 리포트는 `구역 동행 유료/무료 ... (총량 중복 제외)`로 표시.
-2. v19 `phone-backup-restore`
+3. v19 `phone-backup-restore`
    - 백업설정에 `개발앱 백업 복구` 추가.
    - 정상화된 개발앱 백업 JSON을 기존 날짜에 덮어쓸 수 있음.
    - 기존 날짜가 있으면 `확인=덮어쓰기`, `취소=복사본`.
    - 복구 전후 전체 백업 파일 자동 내보내기.
    - `현장앱 백업 가져오기`는 기존 날짜 보호/복사본 정책 유지.
-3. v18 `cumulative-correction-helper`
+4. v18 `cumulative-correction-helper`
    - 구역 수량 계산 기준을 배송지 이름이 아니라 작업 순서 기준으로 보강.
    - 1구역은 실제 수량, 2구역 이후 누적 총합 입력은 앞 구역 합계를 빼서 저장.
    - 기록 정정 화면에 `이 구역 실제 수량 / 누적 총합에서 이전 구역 자동 차감` 선택 추가.
    - 기록 정정 화면에 `누락 도우미 배송 추가` 추가. 사라졌거나 빠진 무료/유료 도우미 배송을 다시 입력 가능.
    - 브라우저 검수 411x762 / DPR 2.63에서 `cumulativeRouteTotalsByOrder`, `pastMissingHelperAdded` 통과.
-4. v17 `past-record-correction`
+5. v17 `past-record-correction`
    - 백업설정 기록 정정에서 저장된 지난 날짜를 선택해 불러올 수 있게 반영.
    - 과거 날짜 기록도 기존 선택형 기록 정정 UI로 구역/도우미 기록 수정 가능.
    - `오늘로 돌아가기`로 현재 날짜 기록을 다시 불러올 수 있음.
    - 브라우저 검수 411x762 / DPR 2.63에서 `pastCorrectionSeeded`, `pastCorrectionDateLoaded`, `pastCorrectionEdited` 통과.
-5. v16 `repeatable-record-correction`
-   - 기록 정정을 `수정할 기록 선택 -> 기록 불러오기 -> 선택 기록 정정 반영` 구조로 변경.
-   - 완료 구역의 구역 종류, 이름, 수량, 시간, 실패/추가를 반복 수정 가능하게 반영.
-   - 도우미 전환/무료/유료/구역 복구 후에도 다시 선택해서 재수정 가능.
-   - 복구 구역은 실제 시작시간 기준으로 구역 순서를 재정렬.
-   - 시간칸을 건드리지 않은 수량/이름 정정은 기존 시간 검증 때문에 막히지 않도록 수정.
-   - 브라우저 검수 411x762 / DPR 2.63 전체 통과.
 
 ## 1. 현재 실제 배포 앱 위치
 
@@ -186,7 +184,7 @@ current-source\docs\hotfixes\
 - `npm run check`
 - `npm run build`
 - 브라우저 스모크 검수 411x762 / DPR 2.63
-- 긴급 수정 후 live `sw.js`의 `delivery-master-install-v20` 또는 새 배포 버전 확인
+- 긴급 수정 후 live `sw.js`의 `delivery-master-install-v21` 또는 새 배포 버전 확인
 
 ## 5. 새 대화창에서 첫 번째로 할 일
 
@@ -213,8 +211,8 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - 이전 원본 폴더의 src는 이 폴더로 이관된 기준으로 작업한다.
 - current-source는 참고 스냅샷이지 원본이나 배포 대상이 아니다.
 - Season2는 보관용 원본이라 건드리지 않는다.
-- v20에는 구역 순서 수량 계산, 구역 동행 도우미 중복 합산 방지, 도우미 배송 무료/유료, 백업설정 선택형 반복 기록 정정, 지난 날짜 기록 정정, 개발앱 백업 복구가 이미 반영되어 있다.
-- 목표는 v20 이후 새 필드 버그만 이 기준 위에서 핫픽스하는 것이다.
+- v21에는 위험 수량 복구 패널, 구역 순서 수량 계산, 구역 동행 도우미 중복 합산 방지, 도우미 배송 무료/유료, 백업설정 선택형 반복 기록 정정, 지난 날짜 기록 정정, 개발앱 백업 복구가 이미 반영되어 있다.
+- 목표는 v21 이후 새 필드 버그만 이 기준 위에서 핫픽스하는 것이다.
 - 먼저 이 폴더의 src 원본과 빌드 설정이 존재하는지 확인해.
 ```
 
@@ -222,10 +220,10 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 
 `delivery-master-install-deploy` 내부:
 
-- v20 기준 커밋/푸시 완료 여부는 `git log -1 --oneline`과 live `sw.js`로 확인한다.
+- v21 기준 커밋/푸시 완료 여부는 `git log -1 --oneline`과 live `sw.js`로 확인한다.
 - 이전 원본 `src`/설정/문서 이관 완료
 - `current-source/`는 `.gitignore`로 제외된 참고 스냅샷
-- live `sw.js`의 캐시명 `delivery-master-install-v20` 확인 필요
+- live `sw.js`의 캐시명 `delivery-master-install-v21` 확인 필요
 
 상위 `delivery-master` 쪽:
 

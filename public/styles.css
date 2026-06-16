@@ -299,6 +299,40 @@ select {
   padding: 0 8px;
 }
 
+.record-correction input[type="time"],
+.correction-editor input[type="time"] {
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.quantity-risk-panel {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.risk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.risk-grid span {
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #7c2d12;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.risk-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .edit-time-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

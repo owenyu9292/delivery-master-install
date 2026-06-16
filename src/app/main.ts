@@ -46,6 +46,7 @@ let statsWeekOffset = 0;
 let statsMonthOffset = 0;
 let statsSelectedDate = todayKey();
 let activeCorrectionTargetId = "";
+let pendingQuantityRisk: PendingQuantityRisk | null = null;
 
 type AppTab = "work" | "log" | "report" | "stats" | "backup";
 type StatsTab = "week" | "month" | "date";
@@ -62,6 +63,18 @@ interface ImportFeedback {
   snapshotCreated: boolean;
   backupExported: boolean;
   activeDate?: string;
+}
+
+interface PendingQuantityRisk {
+  zoneId: string;
+  zoneName: string;
+  entered: number;
+  saveValue: number;
+  previousDelivered: number;
+  expectedTotal?: number;
+  warning: string;
+  adjustedValue?: number;
+  mijuInput?: MijuInputParts;
 }
 
 const appRoot = document.querySelector<HTMLDivElement>("#app");
@@ -164,6 +177,7 @@ function renderActiveTabContent(
 function renderWorkTab(calculation: DayCalculation, pendingZone: ZoneRecord | undefined): string {
   return `
     ${renderCurrentStep()}
+    ${pendingQuantityRisk ? renderQuantityRiskPanel(pendingQuantityRisk) : ""}
     ${pendingZone ? renderCleanupCorrectionPanel(pendingZone.id) : ""}
     ${renderEventPanel()}
     <section class="panel">
@@ -738,16 +752,16 @@ function renderZoneCorrectionForm(zone: ZoneRecord, delivered: number): string {
       </label>
       <div class="edit-grid compact">
         <label>시작
-          <input id="correction-zone-start" type="datetime-local" value="${start ? formatIsoForInput(start.at) : ""}">
+          <input id="correction-zone-start" type="time" value="${formatIsoForTimeInput(start?.at)}">
         </label>
         <label>종료
-          <input id="correction-zone-end" type="datetime-local" value="${end ? formatIsoForInput(end.at) : ""}">
+          <input id="correction-zone-end" type="time" value="${formatIsoForTimeInput(end?.at)}">
         </label>
         <label>정리 시작
-          <input id="correction-zone-sorting-start" type="datetime-local" value="${sortingStart ? formatIsoForInput(sortingStart.at) : ""}">
+          <input id="correction-zone-sorting-start" type="time" value="${formatIsoForTimeInput(sortingStart?.at)}">
         </label>
         <label>정리 완료
-          <input id="correction-zone-sorting-end" type="datetime-local" value="${sortingEnd ? formatIsoForInput(sortingEnd.at) : ""}">
+          <input id="correction-zone-sorting-end" type="time" value="${formatIsoForTimeInput(sortingEnd?.at)}">
         </label>
         <label>실패
           <input id="correction-zone-failed" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="0">
@@ -780,7 +794,7 @@ function renderMissingHelperCorrectionForm(): string {
         <input id="correction-helper-quantity" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="">
       </label>
       <label>시각
-        <input id="correction-helper-at" type="datetime-local" value="${formatIsoForInput(defaultAt)}">
+        <input id="correction-helper-at" type="time" value="${formatIsoForTimeInput(defaultAt)}">
       </label>
       <label>메모
         <input id="correction-helper-note" type="text" value="기록 정정에서 추가">
@@ -815,7 +829,7 @@ function renderHelperCorrectionForm(helper: HelperRecord): string {
         <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity > 0 ? quantity : ""}">
       </label>
       <label>시각
-        <input data-helper-at="${escapeAttribute(helper.id)}" type="datetime-local" value="${event ? formatIsoForInput(event.at) : ""}">
+        <input data-helper-at="${escapeAttribute(helper.id)}" type="time" value="${formatIsoForTimeInput(event?.at)}">
       </label>
       <button data-action="save-helper-correction" data-helper="${escapeAttribute(helper.id)}">도우미 기록 정정 반영</button>
       <label>구역 기록으로 바꾸기
@@ -1291,6 +1305,32 @@ function renderCleanupCorrectionPanel(zoneId: string): string {
         <button data-action="fix-cleanup" data-zone="${zoneId}">보정 적용</button>
         <button data-action="skip-cleanup" data-zone="${zoneId}">정리 없음</button>
       </div>
+    </section>
+  `;
+}
+
+function renderQuantityRiskPanel(risk: PendingQuantityRisk): string {
+  const overExpected = risk.expectedTotal !== undefined
+    ? risk.saveValue + risk.previousDelivered - risk.expectedTotal
+    : undefined;
+  return `
+    <section class="warning quantity-risk-panel">
+      <strong>수량이 비정상적으로 큽니다.</strong>
+      <p>${escapeHtml(risk.warning)}</p>
+      <div class="risk-grid">
+        <span>입력값 <strong>${risk.entered}개</strong></span>
+        <span>저장 예정 <strong>${risk.saveValue}개</strong></span>
+        <span>이전 완료 <strong>${risk.previousDelivered}개</strong></span>
+        <span>예상 수량 <strong>${risk.expectedTotal ?? "-"}개</strong></span>
+        ${overExpected !== undefined ? `<span>예상 대비 <strong>${overExpected > 0 ? "+" : ""}${overExpected}개</strong></span>` : ""}
+      </div>
+      <div class="risk-actions">
+        <button data-action="quantity-risk-reset">입력 다시 하기</button>
+        ${risk.adjustedValue !== undefined ? `<button class="secondary" data-action="quantity-risk-adjusted">누적 총합으로 계산 (${risk.adjustedValue}개)</button>` : ""}
+        <button class="secondary" data-action="quantity-risk-actual">이 구역 실제 수량 ${risk.entered}개 저장</button>
+        <button class="danger" data-action="quantity-risk-override">예외 저장</button>
+      </div>
+      <p class="hint">실수 저장을 막기 위해 바로 저장하지 않았습니다. 실제 예외라면 예외 저장 기록이 남습니다.</p>
     </section>
   `;
 }
@@ -1775,6 +1815,23 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   if (action === "sorting-end" && zoneId) addZoneEvent("sorting_end", zoneId);
   if (action === "delivery-start" && zoneId) addDeliveryStart(zoneId);
   if (action === "zone-end" && zoneId) await addZoneEnd(zoneId);
+  if (action === "quantity-risk-reset") {
+    pendingQuantityRisk = null;
+    render();
+    return;
+  }
+  if (action === "quantity-risk-adjusted") {
+    await applyPendingQuantityRisk("adjusted");
+    return;
+  }
+  if (action === "quantity-risk-actual") {
+    await applyPendingQuantityRisk("actual");
+    return;
+  }
+  if (action === "quantity-risk-override") {
+    await applyPendingQuantityRisk("override");
+    return;
+  }
   if (action === "close-day-now" && isUnpaidHelperDay(currentDay)) {
     const closeAt = nowIso();
     addUnpaidHelperEvent(closeAt);
@@ -2070,9 +2127,9 @@ async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
 function resolveCorrectionDelivered(zoneId: string, entered: number, hasValue: boolean): number | undefined {
   const mode = readText("#correction-zone-quantity-mode", "actual");
   if (mode !== "cumulative") {
-    return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "actual" });
+    return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "actual", riskContext: "block" });
   }
-  return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "cumulative" });
+  return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "cumulative", riskContext: "block" });
 }
 
 function resolveCorrectionZoneName(kind: string, enteredName: string): string {
@@ -2406,7 +2463,7 @@ function addDeliveryStart(zoneId: string): void {
 
 async function addZoneEnd(zoneId: string): Promise<void> {
   if (!currentDay || hasZoneEnded(zoneId)) return;
-  const zone = ensureZone(zoneId);
+  ensureZone(zoneId);
   if (zoneId !== "miju" && !hasZoneEvent(zoneId, "sorting_start") && !hasZoneEvent(zoneId, "delivery_start")) {
     toast("정리 시작 또는 바로 배송 시작을 먼저 선택하세요.");
     return;
@@ -2424,8 +2481,19 @@ async function addZoneEnd(zoneId: string): Promise<void> {
   }
   const rawDelivered = mijuInput?.total ?? deliveredInput?.value ?? 0;
   const hasValue = mijuInput ? mijuInput.totalHasValue || mijuInput.hasDetail : Boolean(deliveredInput?.hasValue);
-  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
+  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue, { mijuInput });
   if (delivered === undefined) return;
+  completeZoneEnd(zoneId, delivered, { mijuInput });
+}
+
+function completeZoneEnd(
+  zoneId: string,
+  delivered: number,
+  options: { mijuInput?: MijuInputParts; overrideReason?: string; enteredQuantity?: number } = {},
+): void {
+  if (!currentDay) return;
+  const zone = ensureZone(zoneId);
+  const mijuInput = options.mijuInput;
   const mijuParts = mijuInput ? buildMijuPartsFromZoneTotal(mijuInput, delivered) : undefined;
   if (mijuParts?.ok === false) {
     toast(mijuParts.message ?? "미주 수량을 확인하세요.");
@@ -2441,6 +2509,13 @@ async function addZoneEnd(zoneId: string): Promise<void> {
       failed: 0,
       extra: 0,
       zoneName: zone.name,
+      ...(options.overrideReason
+        ? {
+            quantityOverride: true,
+            quantityOverrideReason: options.overrideReason,
+            enteredQuantity: options.enteredQuantity,
+          }
+        : {}),
       ...(mijuParts
         ? {
             building1Total: mijuParts.one,
@@ -2455,6 +2530,27 @@ async function addZoneEnd(zoneId: string): Promise<void> {
     },
   });
   linkLatestEvent(zoneId, "zone_end", "endEventId");
+  pendingQuantityRisk = null;
+}
+
+async function applyPendingQuantityRisk(mode: "adjusted" | "actual" | "override"): Promise<void> {
+  if (!currentDay || !pendingQuantityRisk) return;
+  const risk = pendingQuantityRisk;
+  const value = mode === "adjusted" ? risk.adjustedValue : risk.entered;
+  if (value === undefined || value <= 0) {
+    toast("저장할 수량을 다시 확인하세요.");
+    return;
+  }
+  completeZoneEnd(risk.zoneId, value, {
+    mijuInput: risk.mijuInput,
+    enteredQuantity: risk.entered,
+    overrideReason: mode === "override"
+      ? `위험 수량 예외 저장: ${risk.warning}`
+      : mode === "actual"
+        ? `위험 수량 실제 수량 확인 저장: ${risk.warning}`
+        : undefined,
+  });
+  await saveAndRender();
 }
 
 async function correctCleanup(zoneId?: string): Promise<void> {
@@ -2475,7 +2571,7 @@ async function saveCompletedZoneEdit(zoneId: string): Promise<void> {
   const deliveredInput = zoneId === "miju" ? undefined : readLimitedNumberField(`#edit-${zoneId}-delivered`, 3);
   const rawDelivered = mijuEditInput?.total ?? deliveredInput?.value ?? 0;
   const hasValue = mijuEditInput ? mijuEditInput.totalHasValue || mijuEditInput.hasDetail : Boolean(deliveredInput?.hasValue);
-  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
+  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue, { riskContext: "block" });
   if (delivered === undefined) return;
   const editParts = mijuEditInput ? buildMijuPartsFromZoneTotal(mijuEditInput, delivered) : undefined;
   if (editParts?.ok === false) {
@@ -3211,7 +3307,7 @@ function readOptionalTimeInput(selector: string, existingIso?: string): string |
 function readChangedTimeInput(selector: string, existingIso?: string): string | undefined {
   const value = document.querySelector<HTMLInputElement>(selector)?.value;
   if (!value) return undefined;
-  if (existingIso && value === formatIsoForInput(existingIso)) return undefined;
+  if (existingIso && value === formatIsoForTimeInput(existingIso)) return undefined;
   return readOptionalTimeInput(selector, existingIso);
 }
 
@@ -3332,7 +3428,7 @@ function resolveValidatedDelivered(
   zoneId: string,
   entered: number,
   hasValue: boolean,
-  options: { mode?: "auto" | "actual" | "cumulative" } = {},
+  options: { mode?: "auto" | "actual" | "cumulative"; mijuInput?: MijuInputParts; riskContext?: "zone-end" | "block" } = {},
 ): number | undefined {
   if (!currentDay) return undefined;
   const zoneName = getZoneName(zoneId);
@@ -3360,8 +3456,22 @@ function resolveValidatedDelivered(
       return undefined;
     }
     if (adjustedResult.warning) {
-      const ok = confirm(`${adjustedResult.warning}\n\n${entered}개에서 앞 구역 ${previousDelivered}개를 빼 ${adjusted}개로 저장할까요?`);
-      return ok ? adjusted : undefined;
+      if (options.riskContext === "block") {
+        toast(`${adjustedResult.warning} 수량을 다시 확인하세요.`);
+        return undefined;
+      }
+      setPendingQuantityRisk({
+        zoneId,
+        zoneName,
+        entered,
+        saveValue: adjusted,
+        previousDelivered,
+        expectedTotal: getExpectedTotal(),
+        warning: adjustedResult.warning,
+        adjustedValue: adjusted,
+        mijuInput: options.mijuInput,
+      });
+      return undefined;
     }
     toast(`${zoneName} 누적 ${entered}개에서 앞 구역 ${previousDelivered}개를 빼 ${adjusted}개로 저장합니다.`);
     return adjusted;
@@ -3386,11 +3496,33 @@ function resolveValidatedDelivered(
   }
 
   if (result.warning) {
-    const ok = confirm(`${result.warning}\n\n그대로 저장할까요?`);
-    return ok ? entered : undefined;
+    if (options.riskContext === "block") {
+      toast(`${result.warning} 수량을 다시 확인하세요.`);
+      return undefined;
+    }
+    const adjustedValue = previousDelivered > 0 && entered - previousDelivered > 0
+      ? entered - previousDelivered
+      : undefined;
+    setPendingQuantityRisk({
+      zoneId,
+      zoneName,
+      entered,
+      saveValue: entered,
+      previousDelivered,
+      expectedTotal: getExpectedTotal(),
+      warning: result.warning,
+      adjustedValue,
+      mijuInput: options.mijuInput,
+    });
+    return undefined;
   }
 
   return result.value;
+}
+
+function setPendingQuantityRisk(risk: PendingQuantityRisk): void {
+  pendingQuantityRisk = risk;
+  toast("수량이 비정상적으로 커서 저장을 멈췄습니다. 화면의 선택지를 확인하세요.");
 }
 
 function getPreviousZoneDeliveredTotal(zoneId: string): number {

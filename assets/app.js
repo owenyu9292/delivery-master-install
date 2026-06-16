@@ -2049,9 +2049,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.19-zone-helper-dedup";
-var APP_UPDATED_LABEL = "2026-06-16 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v20";
+var APP_VERSION = "0.2.20-risk-quantity-recovery";
+var APP_UPDATED_LABEL = "2026-06-17 \uC218\uC815\uBCF8";
+var CACHE_VERSION = "v21";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -2085,6 +2085,7 @@ var statsWeekOffset = 0;
 var statsMonthOffset = 0;
 var statsSelectedDate = todayKey();
 var activeCorrectionTargetId = "";
+var pendingQuantityRisk = null;
 var appRoot = document.querySelector("#app");
 if (!appRoot) throw new Error("Missing #app root");
 var root = appRoot;
@@ -2169,6 +2170,7 @@ function renderActiveTabContent(calculation, report, history, pendingZone) {
 function renderWorkTab(calculation, pendingZone) {
   return `
     ${renderCurrentStep()}
+    ${pendingQuantityRisk ? renderQuantityRiskPanel(pendingQuantityRisk) : ""}
     ${pendingZone ? renderCleanupCorrectionPanel(pendingZone.id) : ""}
     ${renderEventPanel()}
     <section class="panel">
@@ -2639,16 +2641,16 @@ function renderZoneCorrectionForm(zone, delivered) {
       </label>
       <div class="edit-grid compact">
         <label>\uC2DC\uC791
-          <input id="correction-zone-start" type="datetime-local" value="${start ? formatIsoForInput(start.at) : ""}">
+          <input id="correction-zone-start" type="time" value="${formatIsoForTimeInput(start?.at)}">
         </label>
         <label>\uC885\uB8CC
-          <input id="correction-zone-end" type="datetime-local" value="${end ? formatIsoForInput(end.at) : ""}">
+          <input id="correction-zone-end" type="time" value="${formatIsoForTimeInput(end?.at)}">
         </label>
         <label>\uC815\uB9AC \uC2DC\uC791
-          <input id="correction-zone-sorting-start" type="datetime-local" value="${sortingStart ? formatIsoForInput(sortingStart.at) : ""}">
+          <input id="correction-zone-sorting-start" type="time" value="${formatIsoForTimeInput(sortingStart?.at)}">
         </label>
         <label>\uC815\uB9AC \uC644\uB8CC
-          <input id="correction-zone-sorting-end" type="datetime-local" value="${sortingEnd ? formatIsoForInput(sortingEnd.at) : ""}">
+          <input id="correction-zone-sorting-end" type="time" value="${formatIsoForTimeInput(sortingEnd?.at)}">
         </label>
         <label>\uC2E4\uD328
           <input id="correction-zone-failed" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="0">
@@ -2678,7 +2680,7 @@ function renderMissingHelperCorrectionForm() {
         <input id="correction-helper-quantity" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="">
       </label>
       <label>\uC2DC\uAC01
-        <input id="correction-helper-at" type="datetime-local" value="${formatIsoForInput(defaultAt)}">
+        <input id="correction-helper-at" type="time" value="${formatIsoForTimeInput(defaultAt)}">
       </label>
       <label>\uBA54\uBAA8
         <input id="correction-helper-note" type="text" value="\uAE30\uB85D \uC815\uC815\uC5D0\uC11C \uCD94\uAC00">
@@ -2708,7 +2710,7 @@ function renderHelperCorrectionForm(helper) {
         <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity > 0 ? quantity : ""}">
       </label>
       <label>\uC2DC\uAC01
-        <input data-helper-at="${escapeAttribute(helper.id)}" type="datetime-local" value="${event ? formatIsoForInput(event.at) : ""}">
+        <input data-helper-at="${escapeAttribute(helper.id)}" type="time" value="${formatIsoForTimeInput(event?.at)}">
       </label>
       <button data-action="save-helper-correction" data-helper="${escapeAttribute(helper.id)}">\uB3C4\uC6B0\uBBF8 \uAE30\uB85D \uC815\uC815 \uBC18\uC601</button>
       <label>\uAD6C\uC5ED \uAE30\uB85D\uC73C\uB85C \uBC14\uAFB8\uAE30
@@ -3099,6 +3101,29 @@ function renderCleanupCorrectionPanel(zoneId) {
         <button data-action="fix-cleanup" data-zone="${zoneId}">\uBCF4\uC815 \uC801\uC6A9</button>
         <button data-action="skip-cleanup" data-zone="${zoneId}">\uC815\uB9AC \uC5C6\uC74C</button>
       </div>
+    </section>
+  `;
+}
+function renderQuantityRiskPanel(risk) {
+  const overExpected = risk.expectedTotal !== void 0 ? risk.saveValue + risk.previousDelivered - risk.expectedTotal : void 0;
+  return `
+    <section class="warning quantity-risk-panel">
+      <strong>\uC218\uB7C9\uC774 \uBE44\uC815\uC0C1\uC801\uC73C\uB85C \uD07D\uB2C8\uB2E4.</strong>
+      <p>${escapeHtml(risk.warning)}</p>
+      <div class="risk-grid">
+        <span>\uC785\uB825\uAC12 <strong>${risk.entered}\uAC1C</strong></span>
+        <span>\uC800\uC7A5 \uC608\uC815 <strong>${risk.saveValue}\uAC1C</strong></span>
+        <span>\uC774\uC804 \uC644\uB8CC <strong>${risk.previousDelivered}\uAC1C</strong></span>
+        <span>\uC608\uC0C1 \uC218\uB7C9 <strong>${risk.expectedTotal ?? "-"}\uAC1C</strong></span>
+        ${overExpected !== void 0 ? `<span>\uC608\uC0C1 \uB300\uBE44 <strong>${overExpected > 0 ? "+" : ""}${overExpected}\uAC1C</strong></span>` : ""}
+      </div>
+      <div class="risk-actions">
+        <button data-action="quantity-risk-reset">\uC785\uB825 \uB2E4\uC2DC \uD558\uAE30</button>
+        ${risk.adjustedValue !== void 0 ? `<button class="secondary" data-action="quantity-risk-adjusted">\uB204\uC801 \uCD1D\uD569\uC73C\uB85C \uACC4\uC0B0 (${risk.adjustedValue}\uAC1C)</button>` : ""}
+        <button class="secondary" data-action="quantity-risk-actual">\uC774 \uAD6C\uC5ED \uC2E4\uC81C \uC218\uB7C9 ${risk.entered}\uAC1C \uC800\uC7A5</button>
+        <button class="danger" data-action="quantity-risk-override">\uC608\uC678 \uC800\uC7A5</button>
+      </div>
+      <p class="hint">\uC2E4\uC218 \uC800\uC7A5\uC744 \uB9C9\uAE30 \uC704\uD574 \uBC14\uB85C \uC800\uC7A5\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uC2E4\uC81C \uC608\uC678\uB77C\uBA74 \uC608\uC678 \uC800\uC7A5 \uAE30\uB85D\uC774 \uB0A8\uC2B5\uB2C8\uB2E4.</p>
     </section>
   `;
 }
@@ -3533,6 +3558,23 @@ async function handleAction(button) {
   if (action === "sorting-end" && zoneId) addZoneEvent("sorting_end", zoneId);
   if (action === "delivery-start" && zoneId) addDeliveryStart(zoneId);
   if (action === "zone-end" && zoneId) await addZoneEnd(zoneId);
+  if (action === "quantity-risk-reset") {
+    pendingQuantityRisk = null;
+    render();
+    return;
+  }
+  if (action === "quantity-risk-adjusted") {
+    await applyPendingQuantityRisk("adjusted");
+    return;
+  }
+  if (action === "quantity-risk-actual") {
+    await applyPendingQuantityRisk("actual");
+    return;
+  }
+  if (action === "quantity-risk-override") {
+    await applyPendingQuantityRisk("override");
+    return;
+  }
   if (action === "close-day-now" && isUnpaidHelperDay(currentDay)) {
     const closeAt = nowIso();
     addUnpaidHelperEvent(closeAt);
@@ -3801,9 +3843,9 @@ async function saveSelectedZoneCorrection(zoneId) {
 function resolveCorrectionDelivered(zoneId, entered, hasValue) {
   const mode = readText("#correction-zone-quantity-mode", "actual");
   if (mode !== "cumulative") {
-    return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "actual" });
+    return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "actual", riskContext: "block" });
   }
-  return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "cumulative" });
+  return resolveValidatedDelivered(zoneId, entered, hasValue, { mode: "cumulative", riskContext: "block" });
 }
 function resolveCorrectionZoneName(kind, enteredName) {
   if (kind === "miju") return "\uBBF8\uC8FC";
@@ -4105,7 +4147,7 @@ function addDeliveryStart(zoneId) {
 }
 async function addZoneEnd(zoneId) {
   if (!currentDay || hasZoneEnded(zoneId)) return;
-  const zone = ensureZone(zoneId);
+  ensureZone(zoneId);
   if (zoneId !== "miju" && !hasZoneEvent(zoneId, "sorting_start") && !hasZoneEvent(zoneId, "delivery_start")) {
     toast("\uC815\uB9AC \uC2DC\uC791 \uB610\uB294 \uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791\uC744 \uBA3C\uC800 \uC120\uD0DD\uD558\uC138\uC694.");
     return;
@@ -4122,8 +4164,14 @@ async function addZoneEnd(zoneId) {
   }
   const rawDelivered = mijuInput?.total ?? deliveredInput?.value ?? 0;
   const hasValue = mijuInput ? mijuInput.totalHasValue || mijuInput.hasDetail : Boolean(deliveredInput?.hasValue);
-  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
+  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue, { mijuInput });
   if (delivered === void 0) return;
+  completeZoneEnd(zoneId, delivered, { mijuInput });
+}
+function completeZoneEnd(zoneId, delivered, options = {}) {
+  if (!currentDay) return;
+  const zone = ensureZone(zoneId);
+  const mijuInput = options.mijuInput;
   const mijuParts = mijuInput ? buildMijuPartsFromZoneTotal(mijuInput, delivered) : void 0;
   if (mijuParts?.ok === false) {
     toast(mijuParts.message ?? "\uBBF8\uC8FC \uC218\uB7C9\uC744 \uD655\uC778\uD558\uC138\uC694.");
@@ -4139,6 +4187,11 @@ async function addZoneEnd(zoneId) {
       failed: 0,
       extra: 0,
       zoneName: zone.name,
+      ...options.overrideReason ? {
+        quantityOverride: true,
+        quantityOverrideReason: options.overrideReason,
+        enteredQuantity: options.enteredQuantity
+      } : {},
       ...mijuParts ? {
         building1Total: mijuParts.one,
         building2Total: mijuParts.two,
@@ -4151,6 +4204,22 @@ async function addZoneEnd(zoneId) {
     }
   });
   linkLatestEvent(zoneId, "zone_end", "endEventId");
+  pendingQuantityRisk = null;
+}
+async function applyPendingQuantityRisk(mode) {
+  if (!currentDay || !pendingQuantityRisk) return;
+  const risk = pendingQuantityRisk;
+  const value = mode === "adjusted" ? risk.adjustedValue : risk.entered;
+  if (value === void 0 || value <= 0) {
+    toast("\uC800\uC7A5\uD560 \uC218\uB7C9\uC744 \uB2E4\uC2DC \uD655\uC778\uD558\uC138\uC694.");
+    return;
+  }
+  completeZoneEnd(risk.zoneId, value, {
+    mijuInput: risk.mijuInput,
+    enteredQuantity: risk.entered,
+    overrideReason: mode === "override" ? `\uC704\uD5D8 \uC218\uB7C9 \uC608\uC678 \uC800\uC7A5: ${risk.warning}` : mode === "actual" ? `\uC704\uD5D8 \uC218\uB7C9 \uC2E4\uC81C \uC218\uB7C9 \uD655\uC778 \uC800\uC7A5: ${risk.warning}` : void 0
+  });
+  await saveAndRender();
 }
 async function correctCleanup(zoneId) {
   if (!currentDay || !zoneId) return;
@@ -4169,7 +4238,7 @@ async function saveCompletedZoneEdit(zoneId) {
   const deliveredInput = zoneId === "miju" ? void 0 : readLimitedNumberField(`#edit-${zoneId}-delivered`, 3);
   const rawDelivered = mijuEditInput?.total ?? deliveredInput?.value ?? 0;
   const hasValue = mijuEditInput ? mijuEditInput.totalHasValue || mijuEditInput.hasDetail : Boolean(deliveredInput?.hasValue);
-  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue);
+  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue, { riskContext: "block" });
   if (delivered === void 0) return;
   const editParts = mijuEditInput ? buildMijuPartsFromZoneTotal(mijuEditInput, delivered) : void 0;
   if (editParts?.ok === false) {
@@ -4781,7 +4850,7 @@ function readOptionalTimeInput(selector, existingIso) {
 function readChangedTimeInput(selector, existingIso) {
   const value = document.querySelector(selector)?.value;
   if (!value) return void 0;
-  if (existingIso && value === formatIsoForInput(existingIso)) return void 0;
+  if (existingIso && value === formatIsoForTimeInput(existingIso)) return void 0;
   return readOptionalTimeInput(selector, existingIso);
 }
 function mergeCurrentDateAndTime(value, existingIso) {
@@ -4804,11 +4873,6 @@ function formatIsoForTimeInput(iso) {
   if (!iso) return "";
   const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? "" : formatTimeOnlyValue(parsed);
-}
-function formatIsoForInput(iso) {
-  if (!iso) return "";
-  const parsed = new Date(iso);
-  return Number.isNaN(parsed.getTime()) ? "" : formatTimeInputValue(parsed);
 }
 function formatTimeInputValue(date) {
   const y = date.getFullYear();
@@ -4912,10 +4976,22 @@ function resolveValidatedDelivered(zoneId, entered, hasValue, options = {}) {
       return void 0;
     }
     if (adjustedResult.warning) {
-      const ok = confirm(`${adjustedResult.warning}
-
-${entered}\uAC1C\uC5D0\uC11C \uC55E \uAD6C\uC5ED ${previousDelivered}\uAC1C\uB97C \uBE7C ${adjusted}\uAC1C\uB85C \uC800\uC7A5\uD560\uAE4C\uC694?`);
-      return ok ? adjusted : void 0;
+      if (options.riskContext === "block") {
+        toast(`${adjustedResult.warning} \uC218\uB7C9\uC744 \uB2E4\uC2DC \uD655\uC778\uD558\uC138\uC694.`);
+        return void 0;
+      }
+      setPendingQuantityRisk({
+        zoneId,
+        zoneName,
+        entered,
+        saveValue: adjusted,
+        previousDelivered,
+        expectedTotal: getExpectedTotal2(),
+        warning: adjustedResult.warning,
+        adjustedValue: adjusted,
+        mijuInput: options.mijuInput
+      });
+      return void 0;
     }
     toast(`${zoneName} \uB204\uC801 ${entered}\uAC1C\uC5D0\uC11C \uC55E \uAD6C\uC5ED ${previousDelivered}\uAC1C\uB97C \uBE7C ${adjusted}\uAC1C\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4.`);
     return adjusted;
@@ -4937,12 +5013,29 @@ ${entered}\uAC1C\uC5D0\uC11C \uC55E \uAD6C\uC5ED ${previousDelivered}\uAC1C\uB97
     return result.suggestedValue;
   }
   if (result.warning) {
-    const ok = confirm(`${result.warning}
-
-\uADF8\uB300\uB85C \uC800\uC7A5\uD560\uAE4C\uC694?`);
-    return ok ? entered : void 0;
+    if (options.riskContext === "block") {
+      toast(`${result.warning} \uC218\uB7C9\uC744 \uB2E4\uC2DC \uD655\uC778\uD558\uC138\uC694.`);
+      return void 0;
+    }
+    const adjustedValue = previousDelivered > 0 && entered - previousDelivered > 0 ? entered - previousDelivered : void 0;
+    setPendingQuantityRisk({
+      zoneId,
+      zoneName,
+      entered,
+      saveValue: entered,
+      previousDelivered,
+      expectedTotal: getExpectedTotal2(),
+      warning: result.warning,
+      adjustedValue,
+      mijuInput: options.mijuInput
+    });
+    return void 0;
   }
   return result.value;
+}
+function setPendingQuantityRisk(risk) {
+  pendingQuantityRisk = risk;
+  toast("\uC218\uB7C9\uC774 \uBE44\uC815\uC0C1\uC801\uC73C\uB85C \uCEE4\uC11C \uC800\uC7A5\uC744 \uBA48\uCDC4\uC2B5\uB2C8\uB2E4. \uD654\uBA74\uC758 \uC120\uD0DD\uC9C0\uB97C \uD655\uC778\uD558\uC138\uC694.");
 }
 function getPreviousZoneDeliveredTotal(zoneId) {
   if (!currentDay) return 0;

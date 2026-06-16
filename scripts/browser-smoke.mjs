@@ -405,7 +405,7 @@ await wait(300);
 await setSelectedZoneCorrectionKind("alt");
 await setSelectedZoneCorrectionName("과거 힐스 정정");
 await setSelectedZoneQuantityMode("actual");
-await setValue("#correction-zone-delivered", "111");
+await setValue("#correction-zone-delivered", "88");
 await click('[data-action="save-zone-correction"]');
 await wait(900);
 const afterPastCorrectionEdit = await bodyText();
@@ -420,12 +420,44 @@ await click('[data-action="reset-confirm"]');
 await wait(400);
 await click('[data-action="set-tab"][data-tab="work"]');
 await wait();
+await setValue("#expected-count", "92");
+await click('[data-action="depart"]');
+await wait();
+await click('[data-action="arrive"]');
+await wait();
+await click('[data-action="prepare-default-order"]');
+await wait();
+await click('[data-action="move-zone-down"][data-zone="miju"]');
+await wait();
+await click('[data-action="zone-start"][data-zone="hils"]');
+await wait();
+await click('[data-action="delivery-start"][data-zone="hils"]');
+await wait();
+await evaluate("window.__riskConfirmCalled = false; window.confirm = () => { window.__riskConfirmCalled = true; return true; }");
+await setValue("#hils-count", "250");
+await click('[data-action="zone-end"][data-zone="hils"]');
+await wait(700);
+const afterRiskPanel = await bodyText();
+const riskConfirmCalled = await evaluate("Boolean(window.__riskConfirmCalled)");
+await click('[data-action="quantity-risk-reset"]');
+await wait(300);
+await setValue("#hils-count", "13");
+await click('[data-action="zone-end"][data-zone="hils"]');
+await wait(700);
+const afterRiskRecovered = await bodyText();
+
+await click('[data-action="reset-confirm"]');
+await wait(400);
+await click('[data-action="set-tab"][data-tab="work"]');
+await wait();
 await setValue("#expected-count", "100");
 await click('[data-action="depart"]');
 await wait();
 await click('[data-action="arrive"]');
 await wait();
 await click('[data-action="prepare-default-order"]');
+await wait();
+await click('[data-action="add-alt-zone-to-order"]');
 await wait();
 await setValue("#custom-zone-name", "상가 추가");
 await click('[data-action="add-custom-zone-to-order"]');
@@ -447,6 +479,16 @@ await setValue("#hils-count", "13");
 await click('[data-action="zone-end"][data-zone="hils"]');
 await wait(500);
 const afterDirectHils = await bodyText();
+await click('[data-action="zone-start"][data-zone="miju"]');
+await wait();
+await setValue("#miju-1-count", "2");
+await setValue("#miju-2-count", "2");
+await setValue("#miju-3-count", "2");
+await click('[data-action="save-miju-detail"]');
+await wait();
+await setValue("#miju-total-count", "19");
+await click('[data-action="zone-end"][data-zone="miju"]');
+await wait(500);
 const altZoneId = await evaluate(`(() => {
   const button = [...document.querySelectorAll('[data-action="zone-start"]')]
     .find((item) => item.textContent.includes("대체배송"));
@@ -457,27 +499,32 @@ if (altZoneId) {
   await wait();
   await click(`[data-action="delivery-start"][data-zone="${altZoneId}"]`);
   await wait();
-  await setValue("#extra-count", "7");
+  await setValue("#extra-count", "26");
   await click(`[data-action="zone-end"][data-zone="${altZoneId}"]`);
   await wait(500);
 }
 const afterDirectAlt = await bodyText();
+await setValue("#custom-zone-name", "상가 추가");
+await click('[data-action="add-custom-zone"]');
+await wait(500);
 const customZoneId = await evaluate(`(() => {
   const button = [...document.querySelectorAll('[data-action="zone-start"]')]
     .find((item) => item.textContent.includes("상가 추가"));
   return button?.dataset.zone || "";
 })()`);
-if (customZoneId) {
-  await click(`[data-action="zone-start"][data-zone="${customZoneId}"]`);
-  await wait();
-  await click(`[data-action="delivery-start"][data-zone="${customZoneId}"]`);
-  await wait();
-  await setValue("#extra-count", "5");
-  await click(`[data-action="zone-end"][data-zone="${customZoneId}"]`);
+let customDeliveryClicked = false;
+const activeCustomZoneId = await evaluate(`(() => {
+  const button = document.querySelector('[data-action="delivery-start"]');
+  return button?.dataset.zone || "";
+})()`);
+if (activeCustomZoneId) {
+  customDeliveryClicked = await click(`[data-action="delivery-start"][data-zone="${activeCustomZoneId}"]`);
+  await wait(700);
+  await setValue("#extra-count", "31");
+  await click(`[data-action="zone-end"][data-zone="${activeCustomZoneId}"]`);
   await wait(500);
 }
 const afterDirectCustom = await bodyText();
-
 await click('[data-action="set-tab"][data-tab="backup"]');
 await wait();
 const selectedAltForPaid = await selectCorrectionTarget("대체배송");
@@ -659,12 +706,21 @@ const result = {
   pastCorrectionDateLoaded: pastCorrectionLoadedText.includes(pastCorrectionDate)
     && pastCorrectionLoadedText.includes("현재 정정 날짜"),
   pastCorrectionEdited: afterPastCorrectionEdit.includes("과거 힐스 정정")
-    && afterPastCorrectionEdit.includes("111개"),
+    && afterPastCorrectionEdit.includes("88개"),
   pastMissingHelperAdded: afterPastMissingHelper.includes("도우미 배송 무료")
     && afterPastMissingHelper.includes("8개"),
+  riskyQuantityShowsRecoveryPanel: afterRiskPanel.includes("수량이 비정상적으로 큽니다.")
+    && afterRiskPanel.includes("입력 다시 하기")
+    && afterRiskPanel.includes("예외 저장"),
+  riskyQuantityDoesNotUseConfirm: !riskConfirmCalled,
+  riskyQuantityNotSavedImmediately: !afterRiskPanel.includes("힐스테이트 | 완료")
+    && !afterRiskPanel.includes("수량 237개"),
+  riskyQuantityCanRecoverWithNormalInput: afterRiskRecovered.includes("힐스테이트")
+    && afterRiskRecovered.includes("수량 13개"),
   missingQuantityBlocked: !afterMissing.includes("힐스테이트 | 완료"),
   directHilsFirstComplete: afterDirectHils.includes("힐스테이트") && afterDirectHils.includes("수량 13개"),
   directAlternateComplete: afterDirectAlt.includes("대체배송") && afterDirectAlt.includes("수량 7개"),
+  customDeliveryClicked,
   directCustomComplete: afterDirectCustom.includes("상가 추가") && afterDirectCustom.includes("수량 5개"),
   correctionAltToPaidHelper: afterAltToPaidHelper.includes("도우미 배송 유료") && afterAltToPaidHelper.includes("7개"),
   correctionPaidToFreeHelper: afterPaidToFreeHelper.includes("도우미 배송 무료") && afterPaidToFreeHelper.includes("효율 제외"),
