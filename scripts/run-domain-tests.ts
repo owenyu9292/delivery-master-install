@@ -556,6 +556,53 @@ test("received helpers affect totals and efficiency by helper kind", () => {
   assert.equal(report.text.includes("유료 7개 (효율 포함)"), true);
 });
 
+test("zone-scoped received helper quantity does not double count zone totals", () => {
+  const base = calculateDay(sampleDayRecord);
+  const day = createEvent(sampleDayRecord, {
+    type: "helper_add",
+    at: "2026-05-17T12:10:00+09:00",
+    zoneId: "zone-a",
+    payload: {
+      helperId: "helper-paid-zone",
+      name: "도우미 배송 유료",
+      helperKind: "paid_received",
+      quantity: 50,
+      countsForEfficiency: true,
+      sourceZoneId: "zone-a",
+    },
+  });
+  const calculation = calculateDay(day);
+
+  assert.equal(calculation.totals.totalCount, base.totals.totalCount);
+  assert.equal(calculation.totals.deliveredCount, base.totals.deliveredCount);
+  assert.equal(calculation.totals.efficiencyCount, base.totals.deliveredCount);
+  assert.equal(calculation.totals.helperPaidCount, 0);
+  assert.equal(calculation.totals.helperZonePaidCount, 50);
+});
+
+test("zone-scoped received helper without quantity is treated as non-counting companion record", () => {
+  const base = calculateDay(sampleDayRecord);
+  const day = createEvent(sampleDayRecord, {
+    type: "helper_add",
+    at: "2026-05-17T12:10:00+09:00",
+    zoneId: "zone-a",
+    payload: {
+      helperId: "helper-paid-zone-no-qty",
+      name: "도우미 배송 유료",
+      helperKind: "paid_received",
+      countsForEfficiency: true,
+      sourceZoneId: "zone-a",
+    },
+  });
+  const calculation = calculateDay(day);
+
+  assert.equal(calculation.totals.totalCount, base.totals.totalCount);
+  assert.equal(calculation.totals.deliveredCount, base.totals.deliveredCount);
+  assert.equal(calculation.totals.efficiencyCount, base.totals.deliveredCount);
+  assert.equal(calculation.totals.helperPaidCount, 0);
+  assert.equal(calculation.totals.helperZonePaidCount, 0);
+});
+
 test("unpaid helper day keeps drive and helper time without delivery efficiency", () => {
   const helperDay = createUnpaidHelperDay("2026-05-24", "2026-05-24T14:00:00+09:00");
   const calculation = calculateDay(helperDay);

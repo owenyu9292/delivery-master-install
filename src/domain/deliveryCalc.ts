@@ -114,15 +114,18 @@ function calculateTotals(
   const zoneTotalCount = sumDefined(zones.map((zone) => zone.counts.total));
   const zoneDeliveredCount = sumDefined(zones.map((zone) => zone.counts.delivered));
   const helperCounts = calculateReceivedHelperCounts(dayRecord);
-  const deliveredCount = zoneDeliveredCount + helperCounts.free + helperCounts.paid;
-  const efficiencyCount = zoneDeliveredCount + helperCounts.paid;
+  const separateHelperCount = helperCounts.separateFree + helperCounts.separatePaid;
+  const deliveredCount = zoneDeliveredCount + separateHelperCount;
+  const efficiencyCount = zoneDeliveredCount + helperCounts.separatePaid;
 
   return {
-    totalCount: zoneTotalCount + helperCounts.free + helperCounts.paid,
+    totalCount: zoneTotalCount + separateHelperCount,
     deliveredCount,
     efficiencyCount,
-    helperFreeCount: helperCounts.free,
-    helperPaidCount: helperCounts.paid,
+    helperFreeCount: helperCounts.separateFree,
+    helperPaidCount: helperCounts.separatePaid,
+    helperZoneFreeCount: helperCounts.zoneFree,
+    helperZonePaidCount: helperCounts.zonePaid,
     failedCount: sumDefined(zones.map((zone) => zone.counts.failed)),
     extraCount: sumDefined(zones.map((zone) => zone.counts.extra)),
     totalElapsedMinutes: diffMinutes(firstEvent?.at, closeEvent?.at),
@@ -131,21 +134,38 @@ function calculateTotals(
   };
 }
 
-function calculateReceivedHelperCounts(dayRecord: DayRecord): { free: number; paid: number } {
-  const counts = { free: 0, paid: 0 };
+function calculateReceivedHelperCounts(dayRecord: DayRecord): {
+  free: number;
+  paid: number;
+  separateFree: number;
+  separatePaid: number;
+  zoneFree: number;
+  zonePaid: number;
+} {
+  const counts = { free: 0, paid: 0, separateFree: 0, separatePaid: 0, zoneFree: 0, zonePaid: 0 };
   for (const event of dayRecord.timeline) {
     if (event.type !== "helper_add" || !event.payload) continue;
     const payload = event.payload as {
       helperKind?: unknown;
       quantity?: unknown;
       unpaid?: unknown;
+      sourceZoneId?: unknown;
     };
     const quantity = typeof payload.quantity === "number" && Number.isFinite(payload.quantity)
       ? payload.quantity
       : 0;
     if (quantity <= 0 || payload.unpaid === true) continue;
-    if (payload.helperKind === "paid_received") counts.paid += quantity;
-    if (payload.helperKind === "free_received") counts.free += quantity;
+    const isZoneContribution = typeof payload.sourceZoneId === "string" && payload.sourceZoneId.length > 0;
+    if (payload.helperKind === "paid_received") {
+      counts.paid += quantity;
+      if (isZoneContribution) counts.zonePaid += quantity;
+      else counts.separatePaid += quantity;
+    }
+    if (payload.helperKind === "free_received") {
+      counts.free += quantity;
+      if (isZoneContribution) counts.zoneFree += quantity;
+      else counts.separateFree += quantity;
+    }
   }
   return counts;
 }

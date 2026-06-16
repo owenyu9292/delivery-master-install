@@ -634,7 +634,7 @@ function renderRecordCorrectionPanel(): string {
           : 0;
       return { helper, event, kind, quantity };
     })
-    .filter((item) => item.event && item.kind && item.quantity > 0);
+    .filter((item) => item.event && item.kind && (item.quantity > 0 || hasHelperSourceZone(item.event)));
   const targets = [
     ...completed.map(({ zone, delivered }) => ({
       id: `zone:${zone.id}`,
@@ -645,7 +645,7 @@ function renderRecordCorrectionPanel(): string {
     })),
     ...helpers.map(({ helper, kind, quantity }) => ({
       id: `helper:${helper.id}`,
-      label: `${helper.name} · ${quantity}개 · ${kind === "free_received" ? "무료" : "유료"}`,
+      label: `${helper.name} · ${quantity > 0 ? `${quantity}개` : "수량 미기록"} · ${kind === "free_received" ? "무료" : "유료"}`,
       type: "helper" as const,
       helper,
       kind,
@@ -804,7 +804,7 @@ function renderHelperCorrectionForm(helper: HelperRecord): string {
   return `
     <article class="correction-editor">
       <strong>${escapeHtml(helper.name)}</strong>
-      <p>${quantity}개 · ${kind === "free_received" ? "효율 제외" : "효율 포함"}</p>
+      <p>${quantity > 0 ? `${quantity}개` : "수량 미기록"} · ${hasHelperSourceZone(event) ? "구역 동행 · 총량 중복 제외" : kind === "free_received" ? "효율 제외" : "효율 포함"}</p>
       <label>도우미 종류
         <select data-helper-kind="${escapeAttribute(helper.id)}">
           <option value="free_received"${kind === "free_received" ? " selected" : ""}>도우미 배송 무료</option>
@@ -812,7 +812,7 @@ function renderHelperCorrectionForm(helper: HelperRecord): string {
         </select>
       </label>
       <label>수량
-        <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity}">
+        <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity > 0 ? quantity : ""}">
       </label>
       <label>시각
         <input data-helper-at="${escapeAttribute(helper.id)}" type="datetime-local" value="${event ? formatIsoForInput(event.at) : ""}">
@@ -974,12 +974,15 @@ function getHelperEventTitle(payload?: Record<string, unknown>): string {
 function getHelperEventDetail(payload?: Record<string, unknown>): string {
   const quantity = typeof payload?.quantity === "number" ? `${payload.quantity}개` : "";
   const kind = typeof payload?.helperKind === "string" ? payload.helperKind : "";
-  const rule = kind === "free_received"
-    ? "효율 제외"
-    : kind === "paid_received"
-      ? "효율 포함"
-      : "";
-  return [quantity, rule].filter(Boolean).join(" · ") || "시간 기록";
+  const sourceZone = typeof payload?.sourceZoneId === "string" && payload.sourceZoneId.length > 0;
+  const rule = sourceZone
+    ? "구역 동행 · 총량 중복 제외"
+    : kind === "free_received"
+      ? "효율 제외"
+      : kind === "paid_received"
+        ? "효율 포함"
+        : "";
+  return [quantity, rule].filter(Boolean).join(" · ") || "구역 동행";
 }
 
 function buildMijuStartDetail(): string | undefined {
@@ -1254,12 +1257,12 @@ function renderEventPanel(): string {
       </div>
       <button data-action="add-event">이벤트 추가</button>
       <div class="helper-actions">
-        <label>도우미 배송 수량<input id="helper-received-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="예: 13"></label>
+        <label>도우미 배송 수량<input id="helper-received-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="구역 동행이면 비워도 됨"></label>
         <div class="segmented">
           <button data-action="add-helper-free">도우미 배송 무료</button>
           <button data-action="add-helper-paid">도우미 배송 유료</button>
         </div>
-        <p class="hint">무료는 총수량에는 포함하고 효율에서는 제외합니다. 유료는 총수량과 효율에 모두 포함합니다.</p>
+        <p class="hint">위치가 구역이면 도우미는 그 구역 안의 동행/기여로 기록하고 총수량에 다시 더하지 않습니다. 위치가 전체 업무이고 수량이 있으면 별도 도우미 배송으로 계산합니다.</p>
       </div>
     </section>
   `;
@@ -1951,20 +1954,25 @@ function addIncidentEvent(): void {
 
 function addReceivedHelper(kind: "free_received" | "paid_received"): void {
   if (!currentDay) return;
-  const quantity = readLimitedNumber("#helper-received-count", 3);
-  if (quantity <= 0) {
+  const quantityInput = readLimitedNumberField("#helper-received-count", 3);
+  const scope = readText("#event-scope", "work");
+  const sourceZoneId = scope.startsWith("zone:") ? scope.slice("zone:".length) : undefined;
+  if (!sourceZoneId && quantityInput.value <= 0) {
     toast("도우미 배송 수량을 입력하세요.");
     return;
   }
   const label = getHelperKindLabel(kind);
   addReceivedHelperRecord({
     kind,
-    quantity,
+    quantity: quantityInput.hasValue ? quantityInput.value : undefined,
     at: readOptionalTimeInput("#event-at") ?? nowIso(),
     name: label,
-    memo: readText("#event-note", ""),
+    memo: readText("#event-note", sourceZoneId ? "구역 동행" : ""),
+    sourceZoneId,
   });
-  toast(`${label} ${quantity}개를 기록했습니다.`);
+  toast(sourceZoneId
+    ? `${label}${quantityInput.hasValue ? ` ${quantityInput.value}개` : ""} 구역 동행을 기록했습니다.`
+    : `${label} ${quantityInput.value}개를 기록했습니다.`);
 }
 
 async function applyZoneCorrection(zoneId: string): Promise<void> {
@@ -2135,11 +2143,14 @@ async function saveHelperCorrection(helperId?: string): Promise<void> {
   const kind = readHelperCorrectionKind(helperId);
   const quantity = readHelperCorrectionQuantity(helperId);
   const at = readHelperCorrectionAt(helperId);
+  const linkedIds = new Set(helper.linkedEventIds);
+  const helperEvent = currentDay.timeline.find((event) => event.type === "helper_add" && linkedIds.has(event.id));
+  const isZoneContribution = hasHelperSourceZone(helperEvent);
   if (!kind) {
     toast("도우미 종류를 선택하세요.");
     return;
   }
-  if (quantity <= 0) {
+  if (quantity <= 0 && !isZoneContribution) {
     toast("도우미 배송 수량을 입력하세요.");
     return;
   }
@@ -2149,22 +2160,26 @@ async function saveHelperCorrection(helperId?: string): Promise<void> {
   }
   const label = getHelperKindLabel(kind);
   await downloadPreparedSnapshot("helper-correction-before", { kind: "date", date: currentDay.date });
-  const linkedIds = new Set(helper.linkedEventIds);
   currentDay = {
     ...currentDay,
     timeline: currentDay.timeline.map((event) => {
       if (event.type !== "helper_add" || !linkedIds.has(event.id)) return event;
       const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+      const nextPayload: Record<string, unknown> = {
+        ...payload,
+        name: label,
+        helperKind: kind,
+        countsForEfficiency: kind === "paid_received",
+      };
+      if (quantity > 0) {
+        nextPayload.quantity = quantity;
+      } else {
+        delete nextPayload.quantity;
+      }
       return {
         ...event,
         at,
-        payload: {
-          ...payload,
-          name: label,
-          helperKind: kind,
-          quantity,
-          countsForEfficiency: kind === "paid_received",
-        },
+        payload: nextPayload,
       };
     }),
     helpers: currentDay.helpers.map((candidate) => candidate.id === helperId
@@ -2172,9 +2187,11 @@ async function saveHelperCorrection(helperId?: string): Promise<void> {
           ...candidate,
           name: label,
           kind,
-          quantity,
+          quantity: quantity > 0 ? quantity : undefined,
           countsForEfficiency: kind === "paid_received",
-          memo: candidate.memo ? `${candidate.memo} / 재수정: ${label} ${quantity}개` : `재수정: ${label} ${quantity}개`,
+          memo: candidate.memo
+            ? `${candidate.memo} / 재수정: ${label}${quantity > 0 ? ` ${quantity}개` : " 수량 미기록"}`
+            : `재수정: ${label}${quantity > 0 ? ` ${quantity}개` : " 수량 미기록"}`,
         }
       : candidate),
     adjustments: [
@@ -2183,7 +2200,7 @@ async function saveHelperCorrection(helperId?: string): Promise<void> {
         id: `helper-correction-${Date.now()}`,
         eventId: helper.linkedEventIds[0],
         reason: "helper_record_correction",
-        note: `${helper.name} -> ${label} ${quantity}개`,
+        note: `${helper.name} -> ${label}${quantity > 0 ? ` ${quantity}개` : " 수량 미기록"}`,
         createdAt: nowIso(),
       },
     ],
@@ -2193,7 +2210,7 @@ async function saveHelperCorrection(helperId?: string): Promise<void> {
       recoveryStatus: currentDay.meta.recoveryStatus === "none" ? "needsReview" : currentDay.meta.recoveryStatus,
     },
   };
-  toast(`${label} ${quantity}개로 다시 저장했습니다.`);
+  toast(`${label}${quantity > 0 ? ` ${quantity}개` : " 수량 미기록"}로 다시 저장했습니다.`);
   await saveAndRender();
 }
 
@@ -2296,7 +2313,7 @@ async function restoreHelperToZone(helperId?: string): Promise<void> {
 
 function addReceivedHelperRecord(input: {
   kind: "free_received" | "paid_received";
-  quantity: number;
+  quantity?: number;
   at: string;
   name: string;
   memo?: string;
@@ -2315,7 +2332,7 @@ function addReceivedHelperRecord(input: {
       name: input.name,
       action: "add",
       helperKind: input.kind,
-      quantity: input.quantity,
+      ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
       countsForEfficiency: input.kind === "paid_received",
       sourceZoneId: input.sourceZoneId,
     },
@@ -3415,8 +3432,14 @@ function getReceivedHelperQuantityTotal(): number {
     const payload = event.payload as { helperKind?: unknown; quantity?: unknown; unpaid?: unknown };
     if (payload.unpaid === true) return sum;
     if (payload.helperKind !== "free_received" && payload.helperKind !== "paid_received") return sum;
+    if (hasHelperSourceZone(event)) return sum;
     return sum + (typeof payload.quantity === "number" ? payload.quantity : 0);
   }, 0);
+}
+
+function hasHelperSourceZone(event?: TimelineEvent): boolean {
+  const payload = event?.payload as { sourceZoneId?: unknown } | undefined;
+  return typeof payload?.sourceZoneId === "string" && payload.sourceZoneId.length > 0;
 }
 
 function toMijuParts(

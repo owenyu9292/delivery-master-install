@@ -176,6 +176,8 @@ export interface DayCalculationTotals {
   efficiencyCount?: number;
   helperFreeCount?: number;
   helperPaidCount?: number;
+  helperZoneFreeCount?: number;
+  helperZonePaidCount?: number;
   failedCount: number;
   extraCount: number;
   totalElapsedMinutes?: number;

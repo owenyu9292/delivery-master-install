@@ -90,10 +90,14 @@ export function buildDailyReport(
 function buildHelperSummaryLines(calculation: DayCalculation): string[] {
   const free = calculation.totals.helperFreeCount ?? 0;
   const paid = calculation.totals.helperPaidCount ?? 0;
-  if (free <= 0 && paid <= 0) return [];
+  const zoneFree = calculation.totals.helperZoneFreeCount ?? 0;
+  const zonePaid = calculation.totals.helperZonePaidCount ?? 0;
+  if (free <= 0 && paid <= 0 && zoneFree <= 0 && zonePaid <= 0) return [];
   const lines = ["도우미 배송:"];
   if (free > 0) lines.push(`             무료 ${free}개 (효율 제외)`);
   if (paid > 0) lines.push(`             유료 ${paid}개 (효율 포함)`);
+  if (zoneFree > 0) lines.push(`             구역 동행 무료 ${zoneFree}개 (총량 중복 제외)`);
+  if (zonePaid > 0) lines.push(`             구역 동행 유료 ${zonePaid}개 (총량 중복 제외)`);
   return lines;
 }
 

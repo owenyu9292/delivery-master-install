@@ -392,14 +392,17 @@ function calculateTotals(dayRecord, zones) {
   const zoneTotalCount = sumDefined(zones.map((zone) => zone.counts.total));
   const zoneDeliveredCount = sumDefined(zones.map((zone) => zone.counts.delivered));
   const helperCounts = calculateReceivedHelperCounts(dayRecord);
-  const deliveredCount = zoneDeliveredCount + helperCounts.free + helperCounts.paid;
-  const efficiencyCount = zoneDeliveredCount + helperCounts.paid;
+  const separateHelperCount = helperCounts.separateFree + helperCounts.separatePaid;
+  const deliveredCount = zoneDeliveredCount + separateHelperCount;
+  const efficiencyCount = zoneDeliveredCount + helperCounts.separatePaid;
   return {
-    totalCount: zoneTotalCount + helperCounts.free + helperCounts.paid,
+    totalCount: zoneTotalCount + separateHelperCount,
     deliveredCount,
     efficiencyCount,
-    helperFreeCount: helperCounts.free,
-    helperPaidCount: helperCounts.paid,
+    helperFreeCount: helperCounts.separateFree,
+    helperPaidCount: helperCounts.separatePaid,
+    helperZoneFreeCount: helperCounts.zoneFree,
+    helperZonePaidCount: helperCounts.zonePaid,
     failedCount: sumDefined(zones.map((zone) => zone.counts.failed)),
     extraCount: sumDefined(zones.map((zone) => zone.counts.extra)),
     totalElapsedMinutes: diffMinutes(firstEvent2?.at, closeEvent?.at),
@@ -408,14 +411,23 @@ function calculateTotals(dayRecord, zones) {
   };
 }
 function calculateReceivedHelperCounts(dayRecord) {
-  const counts = { free: 0, paid: 0 };
+  const counts = { free: 0, paid: 0, separateFree: 0, separatePaid: 0, zoneFree: 0, zonePaid: 0 };
   for (const event of dayRecord.timeline) {
     if (event.type !== "helper_add" || !event.payload) continue;
     const payload = event.payload;
     const quantity = typeof payload.quantity === "number" && Number.isFinite(payload.quantity) ? payload.quantity : 0;
     if (quantity <= 0 || payload.unpaid === true) continue;
-    if (payload.helperKind === "paid_received") counts.paid += quantity;
-    if (payload.helperKind === "free_received") counts.free += quantity;
+    const isZoneContribution = typeof payload.sourceZoneId === "string" && payload.sourceZoneId.length > 0;
+    if (payload.helperKind === "paid_received") {
+      counts.paid += quantity;
+      if (isZoneContribution) counts.zonePaid += quantity;
+      else counts.separatePaid += quantity;
+    }
+    if (payload.helperKind === "free_received") {
+      counts.free += quantity;
+      if (isZoneContribution) counts.zoneFree += quantity;
+      else counts.separateFree += quantity;
+    }
   }
   return counts;
 }
@@ -653,10 +665,14 @@ function buildDailyReport(dayRecord, calculation, options = {}) {
 function buildHelperSummaryLines(calculation) {
   const free = calculation.totals.helperFreeCount ?? 0;
   const paid = calculation.totals.helperPaidCount ?? 0;
-  if (free <= 0 && paid <= 0) return [];
+  const zoneFree = calculation.totals.helperZoneFreeCount ?? 0;
+  const zonePaid = calculation.totals.helperZonePaidCount ?? 0;
+  if (free <= 0 && paid <= 0 && zoneFree <= 0 && zonePaid <= 0) return [];
   const lines = ["\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1:"];
   if (free > 0) lines.push(`             \uBB34\uB8CC ${free}\uAC1C (\uD6A8\uC728 \uC81C\uC678)`);
   if (paid > 0) lines.push(`             \uC720\uB8CC ${paid}\uAC1C (\uD6A8\uC728 \uD3EC\uD568)`);
+  if (zoneFree > 0) lines.push(`             \uAD6C\uC5ED \uB3D9\uD589 \uBB34\uB8CC ${zoneFree}\uAC1C (\uCD1D\uB7C9 \uC911\uBCF5 \uC81C\uC678)`);
+  if (zonePaid > 0) lines.push(`             \uAD6C\uC5ED \uB3D9\uD589 \uC720\uB8CC ${zonePaid}\uAC1C (\uCD1D\uB7C9 \uC911\uBCF5 \uC81C\uC678)`);
   return lines;
 }
 function buildPreviewModel(dayRecord, calculation) {
@@ -2033,9 +2049,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.18-phone-backup-restore";
-var APP_UPDATED_LABEL = "2026-06-08 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v19";
+var APP_VERSION = "0.2.19-zone-helper-dedup";
+var APP_UPDATED_LABEL = "2026-06-16 \uC218\uC815\uBCF8";
+var CACHE_VERSION = "v20";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -2522,7 +2538,7 @@ function renderRecordCorrectionPanel() {
     const kind = normalizeReceivedHelperKind(helper.kind ?? payload?.helperKind);
     const quantity = typeof helper.quantity === "number" ? helper.quantity : typeof payload?.quantity === "number" ? payload.quantity : 0;
     return { helper, event, kind, quantity };
-  }).filter((item) => item.event && item.kind && item.quantity > 0);
+  }).filter((item) => item.event && item.kind && (item.quantity > 0 || hasHelperSourceZone(item.event)));
   const targets = [
     ...completed.map(({ zone, delivered }) => ({
       id: `zone:${zone.id}`,
@@ -2533,7 +2549,7 @@ function renderRecordCorrectionPanel() {
     })),
     ...helpers.map(({ helper, kind, quantity }) => ({
       id: `helper:${helper.id}`,
-      label: `${helper.name} \xB7 ${quantity}\uAC1C \xB7 ${kind === "free_received" ? "\uBB34\uB8CC" : "\uC720\uB8CC"}`,
+      label: `${helper.name} \xB7 ${quantity > 0 ? `${quantity}\uAC1C` : "\uC218\uB7C9 \uBBF8\uAE30\uB85D"} \xB7 ${kind === "free_received" ? "\uBB34\uB8CC" : "\uC720\uB8CC"}`,
       type: "helper",
       helper,
       kind,
@@ -2681,7 +2697,7 @@ function renderHelperCorrectionForm(helper) {
   return `
     <article class="correction-editor">
       <strong>${escapeHtml(helper.name)}</strong>
-      <p>${quantity}\uAC1C \xB7 ${kind === "free_received" ? "\uD6A8\uC728 \uC81C\uC678" : "\uD6A8\uC728 \uD3EC\uD568"}</p>
+      <p>${quantity > 0 ? `${quantity}\uAC1C` : "\uC218\uB7C9 \uBBF8\uAE30\uB85D"} \xB7 ${hasHelperSourceZone(event) ? "\uAD6C\uC5ED \uB3D9\uD589 \xB7 \uCD1D\uB7C9 \uC911\uBCF5 \uC81C\uC678" : kind === "free_received" ? "\uD6A8\uC728 \uC81C\uC678" : "\uD6A8\uC728 \uD3EC\uD568"}</p>
       <label>\uB3C4\uC6B0\uBBF8 \uC885\uB958
         <select data-helper-kind="${escapeAttribute(helper.id)}">
           <option value="free_received"${kind === "free_received" ? " selected" : ""}>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC</option>
@@ -2689,7 +2705,7 @@ function renderHelperCorrectionForm(helper) {
         </select>
       </label>
       <label>\uC218\uB7C9
-        <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity}">
+        <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity > 0 ? quantity : ""}">
       </label>
       <label>\uC2DC\uAC01
         <input data-helper-at="${escapeAttribute(helper.id)}" type="datetime-local" value="${event ? formatIsoForInput(event.at) : ""}">
@@ -2820,8 +2836,9 @@ function getHelperEventTitle(payload) {
 function getHelperEventDetail(payload) {
   const quantity = typeof payload?.quantity === "number" ? `${payload.quantity}\uAC1C` : "";
   const kind = typeof payload?.helperKind === "string" ? payload.helperKind : "";
-  const rule = kind === "free_received" ? "\uD6A8\uC728 \uC81C\uC678" : kind === "paid_received" ? "\uD6A8\uC728 \uD3EC\uD568" : "";
-  return [quantity, rule].filter(Boolean).join(" \xB7 ") || "\uC2DC\uAC04 \uAE30\uB85D";
+  const sourceZone = typeof payload?.sourceZoneId === "string" && payload.sourceZoneId.length > 0;
+  const rule = sourceZone ? "\uAD6C\uC5ED \uB3D9\uD589 \xB7 \uCD1D\uB7C9 \uC911\uBCF5 \uC81C\uC678" : kind === "free_received" ? "\uD6A8\uC728 \uC81C\uC678" : kind === "paid_received" ? "\uD6A8\uC728 \uD3EC\uD568" : "";
+  return [quantity, rule].filter(Boolean).join(" \xB7 ") || "\uAD6C\uC5ED \uB3D9\uD589";
 }
 function buildMijuStartDetailForDay(dayRecord) {
   const checkpoint = getMijuCheckpointForDay(dayRecord);
@@ -3050,12 +3067,12 @@ function renderEventPanel() {
       </div>
       <button data-action="add-event">\uC774\uBCA4\uD2B8 \uCD94\uAC00</button>
       <div class="helper-actions">
-        <label>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC218\uB7C9<input id="helper-received-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="\uC608: 13"></label>
+        <label>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC218\uB7C9<input id="helper-received-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="\uAD6C\uC5ED \uB3D9\uD589\uC774\uBA74 \uBE44\uC6CC\uB3C4 \uB428"></label>
         <div class="segmented">
           <button data-action="add-helper-free">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC</button>
           <button data-action="add-helper-paid">\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC</button>
         </div>
-        <p class="hint">\uBB34\uB8CC\uB294 \uCD1D\uC218\uB7C9\uC5D0\uB294 \uD3EC\uD568\uD558\uACE0 \uD6A8\uC728\uC5D0\uC11C\uB294 \uC81C\uC678\uD569\uB2C8\uB2E4. \uC720\uB8CC\uB294 \uCD1D\uC218\uB7C9\uACFC \uD6A8\uC728\uC5D0 \uBAA8\uB450 \uD3EC\uD568\uD569\uB2C8\uB2E4.</p>
+        <p class="hint">\uC704\uCE58\uAC00 \uAD6C\uC5ED\uC774\uBA74 \uB3C4\uC6B0\uBBF8\uB294 \uADF8 \uAD6C\uC5ED \uC548\uC758 \uB3D9\uD589/\uAE30\uC5EC\uB85C \uAE30\uB85D\uD558\uACE0 \uCD1D\uC218\uB7C9\uC5D0 \uB2E4\uC2DC \uB354\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uC704\uCE58\uAC00 \uC804\uCCB4 \uC5C5\uBB34\uC774\uACE0 \uC218\uB7C9\uC774 \uC788\uC73C\uBA74 \uBCC4\uB3C4 \uB3C4\uC6B0\uBBF8 \uBC30\uC1A1\uC73C\uB85C \uACC4\uC0B0\uD569\uB2C8\uB2E4.</p>
       </div>
     </section>
   `;
@@ -3678,20 +3695,23 @@ function addIncidentEvent() {
 }
 function addReceivedHelper(kind) {
   if (!currentDay) return;
-  const quantity = readLimitedNumber("#helper-received-count", 3);
-  if (quantity <= 0) {
+  const quantityInput = readLimitedNumberField("#helper-received-count", 3);
+  const scope = readText("#event-scope", "work");
+  const sourceZoneId = scope.startsWith("zone:") ? scope.slice("zone:".length) : void 0;
+  if (!sourceZoneId && quantityInput.value <= 0) {
     toast("\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC218\uB7C9\uC744 \uC785\uB825\uD558\uC138\uC694.");
     return;
   }
   const label = getHelperKindLabel(kind);
   addReceivedHelperRecord({
     kind,
-    quantity,
+    quantity: quantityInput.hasValue ? quantityInput.value : void 0,
     at: readOptionalTimeInput("#event-at") ?? nowIso(),
     name: label,
-    memo: readText("#event-note", "")
+    memo: readText("#event-note", sourceZoneId ? "\uAD6C\uC5ED \uB3D9\uD589" : ""),
+    sourceZoneId
   });
-  toast(`${label} ${quantity}\uAC1C\uB97C \uAE30\uB85D\uD588\uC2B5\uB2C8\uB2E4.`);
+  toast(sourceZoneId ? `${label}${quantityInput.hasValue ? ` ${quantityInput.value}\uAC1C` : ""} \uAD6C\uC5ED \uB3D9\uD589\uC744 \uAE30\uB85D\uD588\uC2B5\uB2C8\uB2E4.` : `${label} ${quantityInput.value}\uAC1C\uB97C \uAE30\uB85D\uD588\uC2B5\uB2C8\uB2E4.`);
 }
 async function applyZoneCorrection(zoneId) {
   const kind = readZoneCorrectionKind(zoneId);
@@ -3849,11 +3869,14 @@ async function saveHelperCorrection(helperId) {
   const kind = readHelperCorrectionKind(helperId);
   const quantity = readHelperCorrectionQuantity(helperId);
   const at = readHelperCorrectionAt(helperId);
+  const linkedIds = new Set(helper.linkedEventIds);
+  const helperEvent = currentDay.timeline.find((event) => event.type === "helper_add" && linkedIds.has(event.id));
+  const isZoneContribution = hasHelperSourceZone(helperEvent);
   if (!kind) {
     toast("\uB3C4\uC6B0\uBBF8 \uC885\uB958\uB97C \uC120\uD0DD\uD558\uC138\uC694.");
     return;
   }
-  if (quantity <= 0) {
+  if (quantity <= 0 && !isZoneContribution) {
     toast("\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC218\uB7C9\uC744 \uC785\uB825\uD558\uC138\uC694.");
     return;
   }
@@ -3863,31 +3886,35 @@ async function saveHelperCorrection(helperId) {
   }
   const label = getHelperKindLabel(kind);
   await downloadPreparedSnapshot("helper-correction-before", { kind: "date", date: currentDay.date });
-  const linkedIds = new Set(helper.linkedEventIds);
   currentDay = {
     ...currentDay,
     timeline: currentDay.timeline.map((event) => {
       if (event.type !== "helper_add" || !linkedIds.has(event.id)) return event;
       const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+      const nextPayload = {
+        ...payload,
+        name: label,
+        helperKind: kind,
+        countsForEfficiency: kind === "paid_received"
+      };
+      if (quantity > 0) {
+        nextPayload.quantity = quantity;
+      } else {
+        delete nextPayload.quantity;
+      }
       return {
         ...event,
         at,
-        payload: {
-          ...payload,
-          name: label,
-          helperKind: kind,
-          quantity,
-          countsForEfficiency: kind === "paid_received"
-        }
+        payload: nextPayload
       };
     }),
     helpers: currentDay.helpers.map((candidate) => candidate.id === helperId ? {
       ...candidate,
       name: label,
       kind,
-      quantity,
+      quantity: quantity > 0 ? quantity : void 0,
       countsForEfficiency: kind === "paid_received",
-      memo: candidate.memo ? `${candidate.memo} / \uC7AC\uC218\uC815: ${label} ${quantity}\uAC1C` : `\uC7AC\uC218\uC815: ${label} ${quantity}\uAC1C`
+      memo: candidate.memo ? `${candidate.memo} / \uC7AC\uC218\uC815: ${label}${quantity > 0 ? ` ${quantity}\uAC1C` : " \uC218\uB7C9 \uBBF8\uAE30\uB85D"}` : `\uC7AC\uC218\uC815: ${label}${quantity > 0 ? ` ${quantity}\uAC1C` : " \uC218\uB7C9 \uBBF8\uAE30\uB85D"}`
     } : candidate),
     adjustments: [
       ...currentDay.adjustments,
@@ -3895,7 +3922,7 @@ async function saveHelperCorrection(helperId) {
         id: `helper-correction-${Date.now()}`,
         eventId: helper.linkedEventIds[0],
         reason: "helper_record_correction",
-        note: `${helper.name} -> ${label} ${quantity}\uAC1C`,
+        note: `${helper.name} -> ${label}${quantity > 0 ? ` ${quantity}\uAC1C` : " \uC218\uB7C9 \uBBF8\uAE30\uB85D"}`,
         createdAt: nowIso()
       }
     ],
@@ -3905,7 +3932,7 @@ async function saveHelperCorrection(helperId) {
       recoveryStatus: currentDay.meta.recoveryStatus === "none" ? "needsReview" : currentDay.meta.recoveryStatus
     }
   };
-  toast(`${label} ${quantity}\uAC1C\uB85C \uB2E4\uC2DC \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.`);
+  toast(`${label}${quantity > 0 ? ` ${quantity}\uAC1C` : " \uC218\uB7C9 \uBBF8\uAE30\uB85D"}\uB85C \uB2E4\uC2DC \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.`);
   await saveAndRender();
 }
 async function addCorrectionHelper() {
@@ -4009,7 +4036,7 @@ function addReceivedHelperRecord(input) {
       name: input.name,
       action: "add",
       helperKind: input.kind,
-      quantity: input.quantity,
+      ...input.quantity !== void 0 ? { quantity: input.quantity } : {},
       countsForEfficiency: input.kind === "paid_received",
       sourceZoneId: input.sourceZoneId
     },
@@ -4934,6 +4961,10 @@ function getExpectedTotal2() {
   const depart = currentDay?.timeline.find((event) => event.type === "depart_jinjeop");
   const payload = depart?.payload;
   return typeof payload?.total === "number" && payload.total > 0 ? payload.total : void 0;
+}
+function hasHelperSourceZone(event) {
+  const payload = event?.payload;
+  return typeof payload?.sourceZoneId === "string" && payload.sourceZoneId.length > 0;
 }
 function toMijuParts(result, totalHasValue) {
   return {

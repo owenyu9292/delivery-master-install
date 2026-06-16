@@ -304,6 +304,18 @@ await setValue("#hils-count", "560");
 await click('[data-action="zone-end"][data-zone="hils"]');
 await wait(900);
 const afterHils = await bodyText();
+await setValue("#event-scope", "zone:hils");
+await setValue("#helper-received-count", "50");
+await click('[data-action="add-helper-paid"]');
+await wait(500);
+await setValue("#helper-received-count", "");
+await click('[data-action="add-helper-paid"]');
+await wait(500);
+await click('[data-action="set-tab"][data-tab="report"]');
+await wait();
+const afterZoneScopedPaidHelperReport = await bodyText();
+await click('[data-action="set-tab"][data-tab="work"]');
+await wait();
 const autoDialogCount = await evaluate("window.__autoDialogCount || 0");
 const autoDialogMessage = await evaluate("window.__autoDialogMessage || ''");
 const viewportInfo = await evaluate(`(() => ({
@@ -625,6 +637,10 @@ const result = {
   mijuMissingTotalBlocked: afterMijuMissingTotal.includes("미주 전체 수량을 입력해야"),
   mijuAutoRest: afterMiju.includes("미주 총합 321개 / A 153개 / 나머지 168개") || afterMiju.includes("수량 321개"),
   hilsSuggested: afterHils.includes("수량 239개") || afterHils.includes("배송 239개"),
+  zoneScopedPaidHelperNoDoubleCount: afterZoneScopedPaidHelperReport.includes("총 배송 수량: 560개")
+    && !afterZoneScopedPaidHelperReport.includes("총 배송 수량: 610개")
+    && afterZoneScopedPaidHelperReport.includes("구역 동행 유료 50개")
+    && afterZoneScopedPaidHelperReport.includes("총량 중복 제외"),
   statsRatioCardFirst: statsWeekText.indexOf("이번 주 비율") >= 0
     && statsWeekText.indexOf("이번 주 비율") < statsWeekText.indexOf("총 배송"),
   statsRatioLabel: statsWeekText.includes("미57:힐43:대0"),
