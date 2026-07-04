@@ -881,3 +881,19 @@
 - `npm run build`: 통과.
 - 브라우저 스모크 검수: 411x762 / DPR 2.63, 별도 Chrome 프로필, 전체 항목 true.
 - 추가 통과 항목: `pastCorrectionSeeded`, `pastCorrectionDateLoaded`, `pastCorrectionEdited`.
+
+## 2026-07-04 v22 로그 직접 수정 대형 업데이트
+
+- 상태: 구현/빌드/체크/411x762 브라우저 스모크 통과.
+- 범위: 로그 탭 각 항목에 연필 수정 버튼을 추가하고, 선택한 로그 항목만 바로 수정하는 단순 편집 패널을 추가했다.
+- 원칙: `DayRecord.timeline`이 원본이며 리포트/통계/로그는 파생 출력이다. 로그 직접 수정도 timeline을 수정한다.
+- 시간 입력: native analog/time picker 대신 시/분 숫자 직접 입력으로 처리한다.
+- 저장 안전장치: 저장 전 `log-edit-before` 날짜 스냅샷을 생성하고, 구역 시간축 검증을 통과해야 저장한다.
+- 검수 추가: `scripts/browser-smoke.mjs`에 `logEditButtonShown`, `logEditDigitalOnly`, `logDirectEditSaved` 항목을 추가했다.
+
+## 2026-07-04 v22 최종 검수
+
+- `npm run check`: 통과, 50/50 domain tests passed.
+- `npm run build`: 통과.
+- `node scripts/browser-smoke.mjs`: headless Chrome, 411x762 / DPR 2.63 기준 통과.
+- 검수 방식: 사용자 화면을 방해하지 않는 headless/background 검수로 전환.

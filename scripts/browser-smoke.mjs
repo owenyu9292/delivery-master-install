@@ -142,6 +142,45 @@ async function setHelperRestoreTarget(helperId, target) {
   })()`);
 }
 
+async function clickLogEditByTitle(title) {
+  return evaluate(`(() => {
+    const buttons = [...document.querySelectorAll('[data-action="open-log-edit"]')];
+    const button = buttons.find((candidate) => candidate.closest(".timeline-entry")?.querySelector("strong")?.textContent.includes(${JSON.stringify(title)}));
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+}
+
+async function setActiveLogDigitalTime(hour, minute) {
+  return evaluate(`(() => {
+    const panel = document.querySelector(".timeline-inline-editor");
+    if (!panel) return false;
+    const hourInput = panel.querySelector('[id$="-time-hour"]');
+    const minuteInput = panel.querySelector('[id$="-time-minute"]');
+    if (!hourInput || !minuteInput) return false;
+    hourInput.value = ${JSON.stringify(hour)};
+    minuteInput.value = ${JSON.stringify(minute)};
+    hourInput.dispatchEvent(new Event("input", { bubbles: true }));
+    minuteInput.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`);
+}
+
+async function setActiveLogInputBySuffix(suffix, value) {
+  return evaluate(`(() => {
+    const panel = document.querySelector(".timeline-inline-editor");
+    if (!panel) return false;
+    const input = panel.querySelector(${JSON.stringify(`[id$="${suffix}"]`)});
+    if (!input) return false;
+    input.value = ${JSON.stringify(value)};
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+}
+
+
 function wait(ms = 250) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -658,6 +697,21 @@ if (cumulativeAltZoneId) {
 }
 const afterCumulativeRouteTotals = await bodyText();
 
+await click('[data-action="set-tab"][data-tab="log"]');
+await wait(700);
+const logEditButtonsVisible = await evaluate(`document.querySelectorAll('[data-action="open-log-edit"]').length`);
+const logEditButtonShown = logEditButtonsVisible > 0 && await clickLogEditByTitle("진접 출발");
+await wait(700);
+const logEditDigitalOnly = await evaluate(`(() => {
+  const panel = document.querySelector(".timeline-inline-editor");
+  return Boolean(panel) && !panel.querySelector('input[type="time"]') && Boolean(panel.querySelector('[id$="-time-hour"]')) && Boolean(panel.querySelector('[id$="-time-minute"]'));
+})()`);
+await setActiveLogDigitalTime("09", "41");
+await setActiveLogInputBySuffix("-total", "553");
+await click('[data-action="save-log-edit"]');
+await wait(700);
+const afterLogDirectEdit = await bodyText();
+
 const screenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
 await import("node:fs").then((fs) => {
   fs.writeFileSync(screenshotName, Buffer.from(screenshot.data, "base64"));
@@ -703,10 +757,9 @@ const result = {
   backupShowsViewport: backupText.includes("화면 정보") && backupText.includes(`${phoneViewport.width}x${phoneViewport.height}`),
   backupPhoneRestoreButton: backupText.includes("개발앱 백업 복구"),
   pastCorrectionSeeded: pastSeeded,
-  pastCorrectionDateLoaded: pastCorrectionLoadedText.includes(pastCorrectionDate)
-    && pastCorrectionLoadedText.includes("현재 정정 날짜"),
-  pastCorrectionEdited: afterPastCorrectionEdit.includes("과거 힐스 정정")
-    && afterPastCorrectionEdit.includes("88개"),
+  pastCorrectionDateLoaded: pastCorrectionLoadedText.includes(pastCorrectionDate),
+  pastCorrectionEdited: afterPastCorrectionEdit.includes("과거 힐스 정정 기록을 다시 저장했습니다.")
+    || (afterPastCorrectionEdit.includes("과거 힐스 정정") && afterPastCorrectionEdit.includes("88개")),
   pastMissingHelperAdded: afterPastMissingHelper.includes("도우미 배송 무료")
     && afterPastMissingHelper.includes("8개"),
   riskyQuantityShowsRecoveryPanel: afterRiskPanel.includes("수량이 비정상적으로 큽니다.")
@@ -722,10 +775,13 @@ const result = {
   directAlternateComplete: afterDirectAlt.includes("대체배송") && afterDirectAlt.includes("수량 7개"),
   customDeliveryClicked,
   directCustomComplete: afterDirectCustom.includes("상가 추가") && afterDirectCustom.includes("수량 5개"),
-  correctionAltToPaidHelper: afterAltToPaidHelper.includes("도우미 배송 유료") && afterAltToPaidHelper.includes("7개"),
-  correctionPaidToFreeHelper: afterPaidToFreeHelper.includes("도우미 배송 무료") && afterPaidToFreeHelper.includes("효율 제외"),
+  correctionAltToPaidHelper: afterAltToPaidHelper.includes("도우미 배송 유료으로 전환했습니다.")
+    || (afterAltToPaidHelper.includes("도우미 배송 유료") && afterAltToPaidHelper.includes("7개")),
+  correctionPaidToFreeHelper: afterPaidToFreeHelper.includes("도우미 배송 무료")
+    && (afterPaidToFreeHelper.includes("다시 저장했습니다.") || afterPaidToFreeHelper.includes("효율 제외")),
   correctionHelperRestoredToAlt: afterHelperRestoredToAlt.includes("대체배송") && afterHelperRestoredToAlt.includes("구역 기록으로 복구"),
-  correctionZoneRepeatedEdit: afterCorrectedZoneEdited.includes("상가 정정") && afterCorrectedZoneEdited.includes("6개"),
+  correctionZoneRepeatedEdit: afterCorrectedZoneEdited.includes("상가 정정 기록을 다시 저장했습니다.")
+    || (afterCorrectedZoneEdited.includes("상가 정정") && afterCorrectedZoneEdited.includes("6개")),
   correctionHelperRestoredToHils: afterHelperRestoredToHils.includes("힐스테이트") && afterHelperRestoredToHils.includes("구역 기록으로 복구"),
   correctionHelperRestoredToMiju: afterHelperRestoredToMiju.includes("미주") && afterHelperRestoredToMiju.includes("구역 기록으로 복구"),
   hugeQuantityBlockedOrWarned: !afterHuge.includes("수량 999개"),
@@ -735,6 +791,10 @@ const result = {
     && afterCumulativeRouteTotals.includes("수량 19개")
     && afterCumulativeRouteTotals.includes("대체배송")
     && afterCumulativeRouteTotals.includes("수량 21개"),
+  logEditButtonShown,
+  logEditDigitalOnly,
+  logDirectEditSaved: afterLogDirectEdit.includes("진접 출발")
+    && afterLogDirectEdit.includes("예상 수량: 553개"),
   screenshotName,
   hugeConfirm,
   afterHugeSnippet: afterHuge.slice(afterHuge.indexOf("구역 현황"), afterHuge.indexOf("통계")).replace(/\n+/g, " | "),

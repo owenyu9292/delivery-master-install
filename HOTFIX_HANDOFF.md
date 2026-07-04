@@ -239,3 +239,20 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - 단, 데이터 삭제, 초기화, 기록 덮어쓰기, 기존 현장앱 v1/season2 수정은 별도 확인 없이는 하지 않는다.
 - 보고는 짧고 정확하게 한다.
 - 파일을 옮기거나 배포하기 전에는 반드시 대상과 제외 대상을 말한다.
+
+## Latest 2026-07-04 v22 log direct edit
+
+- Source of truth: `C:\Codex55Workspace\delivery-master\delivery-master-install-deploy`.
+- App/cache: `0.2.21-log-direct-edit`, `delivery-master-install-v22`.
+- Main change: log tab entries now have pencil edit buttons. Edit opens a focused panel for that event only.
+- Time edit rule: use direct hour/minute numeric inputs, not native analog/time picker.
+- Data rule: edit writes back to `DayRecord.timeline`; reports/statistics/log output remain derived.
+- Safety: save creates `log-edit-before` snapshot and uses timeline/zone time validation.
+- Browser smoke must include: `logEditButtonShown`, `logEditDigitalOnly`, `logDirectEditSaved`.
+- Hotfix channel rule: emergency hotfix may patch the immediate blocker, but durable fix and docs must be reconciled here after field work.
+
+## Hotfix validation note 2026-07-04
+
+- Browser validation must use background/headless Chrome when possible.
+- Do not open visible browser windows during field work unless explicitly approved.
+- v22 smoke passed with log direct edit checks: button visible, digital-only time fields, save reflected in log data.

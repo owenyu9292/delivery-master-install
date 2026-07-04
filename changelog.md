@@ -1089,3 +1089,19 @@ git 작업:
 - `npm run build`: 통과
 - 브라우저 스모크 검수: 411x762 / DPR 2.63, 별도 Chrome 프로필, 전체 항목 true
 - 추가 확인: `pastCorrectionSeeded`, `pastCorrectionDateLoaded`, `pastCorrectionEdited` 통과
+
+## 2026-07-04
+
+- v22 `0.2.21-log-direct-edit` / cache `delivery-master-install-v22`.
+- 로그 탭을 현장 수정 진입점으로 확장했다.
+- 각 로그 항목에 작은 연필 버튼을 붙이고, 선택 항목만 별도 패널에서 수정하도록 했다.
+- 시간 수정은 시/분 숫자 입력으로 처리하며 `input[type=time]`을 쓰지 않는다.
+- 구역 완료 수정은 기존 `applyCompletedZoneEdit` 경로를 재사용해 timeline 원본과 파생 계산을 함께 맞춘다.
+- 브라우저 스모크에 로그 직접 수정 검수 항목을 추가했다.
+- 검증: `npm run check`, `npm run build`, `node scripts/browser-smoke.mjs` 통과.
+
+## 2026-07-04 검수 완료 보강
+
+- 브라우저 검수는 headless Chrome으로 전환했다.
+- 최종 스모크 통과 항목에 로그 직접 수정 3개 항목을 포함했다: `logEditButtonShown`, `logEditDigitalOnly`, `logDirectEditSaved`.
+- 기존 선택형 기록 정정은 접힌 보조 패널 구조에 맞춰 스모크 기준을 저장 성공 기준으로 갱신했다.

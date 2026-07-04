@@ -2049,9 +2049,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.20-risk-quantity-recovery";
-var APP_UPDATED_LABEL = "2026-06-17 \uC218\uC815\uBCF8";
-var CACHE_VERSION = "v21";
+var APP_VERSION = "0.2.21-log-direct-edit";
+var APP_UPDATED_LABEL = "2026-07-04 \uB85C\uADF8 \uC9C1\uC811 \uC218\uC815";
+var CACHE_VERSION = "v22";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -2085,6 +2085,7 @@ var statsWeekOffset = 0;
 var statsMonthOffset = 0;
 var statsSelectedDate = todayKey();
 var activeCorrectionTargetId = "";
+var activeLogEditEventId = "";
 var pendingQuantityRisk = null;
 var appRoot = document.querySelector("#app");
 if (!appRoot) throw new Error("Missing #app root");
@@ -2193,16 +2194,9 @@ function renderLogTab(calculation) {
     <section class="panel">
       <h2>\uB85C\uADF8</h2>
       <p class="hint">\uD604\uC7A5\uC5D0\uC11C \uD3C9\uC18C \uD655\uC778\uD558\uB294 \uC2DC\uAC04\uC21C \uAE30\uB85D\uC785\uB2C8\uB2E4. \uC774 \uD654\uBA74\uB9CC \uBCF4\uACE0 \uD558\uB8E8 \uD750\uB984\uC744 \uBCF5\uAD6C\uD560 \uC218 \uC788\uC5B4\uC57C \uD569\uB2C8\uB2E4.</p>
+      <p class="hint">\uAC01 \uD56D\uBAA9\uC758 \uC5F0\uD544 \uBC84\uD2BC\uC73C\uB85C timeline \uC6D0\uBCF8 \uAE30\uB85D\uC744 \uBC14\uB85C \uACE0\uCE69\uB2C8\uB2E4. \uB85C\uADF8 \uBB38\uAD6C\uB9CC \uBC14\uAFB8\uC9C0 \uC54A\uACE0 \uC800\uC7A5 \uB370\uC774\uD130\uAC00 \uAC19\uC774 \uC218\uC815\uB429\uB2C8\uB2E4.</p>
       <div class="timeline-log">
-        ${buildLogEntries(calculation).map((entry) => `
-          <article class="timeline-entry ${entry.kind}">
-            <div>
-              <strong>${entry.title}</strong>
-              <time>${entry.time}</time>
-              ${entry.detail ? `<p>${entry.detail}</p>` : ""}
-            </div>
-          </article>
-        `).join("")}
+        ${buildLogEntries(calculation).map((entry) => renderLogEntry(entry)).join("")}
       </div>
     </section>
   `;
@@ -2519,7 +2513,11 @@ function renderBackupSettingsTab() {
         <button data-action="import-phone-backup">\uAC1C\uBC1C\uC571 \uBC31\uC5C5 \uBCF5\uAD6C</button>
         <button class="danger" data-action="reset-confirm">${resetLabel}</button>
       </div>
-      ${renderRecordCorrectionPanel()}
+      <details class="aux-correction-panel">
+        <summary>\uAE30\uC874 \uC120\uD0DD\uD615 \uAE30\uB85D \uC815\uC815 \uC5F4\uAE30</summary>
+        <p class="hint">\uB85C\uADF8 \uC9C1\uC811 \uC218\uC815\uC774 \uAE30\uBCF8\uC785\uB2C8\uB2E4. \uC774 \uD654\uBA74\uC740 \uC9C0\uB09C \uB0A0\uC9DC \uBD88\uB7EC\uC624\uAE30\uB098 \uBCF4\uC870 \uC804\uD658 \uC791\uC5C5\uC774 \uD544\uC694\uD560 \uB54C\uB9CC \uC5FD\uB2C8\uB2E4.</p>
+        ${renderRecordCorrectionPanel()}
+      </details>
     </section>
   `;
 }
@@ -2565,7 +2563,7 @@ function renderRecordCorrectionPanel() {
   return `
     <section class="record-correction">
       <h3>\uAE30\uB85D \uC815\uC815</h3>
-      <p class="hint">\uB85C\uADF8 \uD654\uBA74\uC740 \uBCF4\uAE30 \uC804\uC6A9\uC785\uB2C8\uB2E4. \uC798\uBABB \uB204\uB978 \uAE30\uB85D\uC740 \uC5EC\uAE30\uC11C \uD558\uB098\uC529 \uBD88\uB7EC\uC640 \uC5EC\uB7EC \uBC88 \uB2E4\uC2DC \uACE0\uCE69\uB2C8\uB2E4.</p>
+      <p class="hint">\uB85C\uADF8 \uC9C1\uC811 \uC218\uC815\uC774 \uAE30\uBCF8\uC774\uACE0, \uC774 \uD654\uBA74\uC740 \uC9C0\uB09C \uB0A0\uC9DC \uC120\uD0DD\uC774\uB098 \uBCF4\uC870 \uC804\uD658 \uC791\uC5C5\uC774 \uD544\uC694\uD560 \uB54C\uB9CC \uC0AC\uC6A9\uD569\uB2C8\uB2E4.</p>
       <label>\uC815\uC815 \uB0A0\uC9DC
         <select id="correction-date">
           ${correctionDates.map((date) => `
@@ -2742,39 +2740,237 @@ function buildLogEntriesForDay(dayRecord, calculation) {
     const zoneCalc = event.zoneId ? zoneCalcs.get(event.zoneId) : void 0;
     const payload = event.payload;
     const time = formatTime(event.at);
+    const editKind = getLogEditKind(event);
+    const baseEntry = {
+      eventId: event.id,
+      time,
+      editable: Boolean(editKind),
+      editKind
+    };
     if (event.type === "depart_jinjeop") {
       const total = typeof payload?.total === "number" ? `\uC608\uC0C1 \uC218\uB7C9: ${payload.total}\uAC1C` : "\uC608\uC0C1 \uC218\uB7C9 \uC5C6\uC74C";
-      entries.push({ title: "\uC9C4\uC811 \uCD9C\uBC1C", time, detail: total, kind: "depart" });
+      entries.push({ ...baseEntry, title: "\uC9C4\uC811 \uCD9C\uBC1C", detail: total, kind: "depart" });
     } else if (event.type === "arrive_cheongnyangni") {
-      entries.push({ title: "\uCCAD\uB7C9\uB9AC \uB3C4\uCC29", time, detail: `\uC6B4\uC804: ${formatMin(getDriveMinutesForDay(dayRecord))}`, kind: "arrive" });
+      entries.push({ ...baseEntry, title: "\uCCAD\uB7C9\uB9AC \uB3C4\uCC29", detail: `\uC6B4\uC804: ${formatMin(getDriveMinutesForDay(dayRecord))}`, kind: "arrive" });
     } else if (event.type === "zone_start") {
       const detail = event.zoneId === "miju" ? buildMijuStartDetailForDay(dayRecord) : buildMovementDetail(zoneCalc);
-      entries.push({ title: `${getZoneOrderLabelForDay(dayRecord, event.zoneId)} \uC2DC\uC791 \xB7 ${zoneName}`, time, detail, kind: "zone" });
+      entries.push({ ...baseEntry, title: `${getZoneOrderLabelForDay(dayRecord, event.zoneId)} \uC2DC\uC791 \xB7 ${zoneName}`, detail, kind: "zone" });
     } else if (event.type === "delivery_start") {
-      entries.push({ title: "\uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791", time, detail: zoneName ? `${zoneName} \uC9C4\uD589 \uC911` : void 0, kind: "zone" });
+      entries.push({ ...baseEntry, title: "\uBC14\uB85C \uBC30\uC1A1 \uC2DC\uC791", detail: zoneName ? `${zoneName} \uC9C4\uD589 \uC911` : void 0, kind: "zone" });
     } else if (event.type === "sorting_start") {
-      entries.push({ title: "\uC815\uB9AC \uC2DC\uC791", time, detail: buildMovementDetail(zoneCalc), kind: "sorting" });
+      entries.push({ ...baseEntry, title: "\uC815\uB9AC \uC2DC\uC791", detail: buildMovementDetail(zoneCalc), kind: "sorting" });
     } else if (event.type === "sorting_end") {
-      entries.push({ title: "\uC815\uB9AC \uC644\uB8CC", time, detail: `\uC815\uB9AC: ${formatMin(zoneCalc?.sortingMinutes)}`, kind: "sorting" });
+      entries.push({ ...baseEntry, title: "\uC815\uB9AC \uC644\uB8CC", detail: `\uC815\uB9AC: ${formatMin(zoneCalc?.sortingMinutes)}`, kind: "sorting" });
     } else if (event.type === "zone_end") {
       const delivered = typeof payload?.delivered === "number" ? `${payload.delivered}\uAC1C` : "\uC218\uB7C9 \uC5C6\uC74C";
       const delivery = zoneCalc?.deliveryMinutes !== void 0 ? ` \xB7 ${formatMin(zoneCalc.deliveryMinutes)}` : "";
       const efficiency = zoneCalc?.efficiencyPerHour !== void 0 ? ` \xB7 ${Math.round(zoneCalc.efficiencyPerHour)}\uAC1C/\uC2DC\uAC04` : "";
-      entries.push({ title: `${zoneName} \uC644\uB8CC`, time, detail: `${delivered}${delivery}${efficiency}`, kind: "done" });
+      entries.push({ ...baseEntry, title: `${zoneName} \uC644\uB8CC`, detail: `${delivered}${delivery}${efficiency}`, kind: "done" });
     } else if (event.type === "incident") {
       const title = typeof payload?.title === "string" ? payload.title : "\uC774\uBCA4\uD2B8";
       const minutes = typeof payload?.minutes === "number" ? `${payload.minutes}\uBD84` : "\uC2DC\uAC04 \uBBF8\uC785\uB825";
-      entries.push({ title, time, detail: `${minutes}${zoneName ? ` / ${zoneName}` : ""}`, kind: "event" });
+      entries.push({ ...baseEntry, title, detail: `${minutes}${zoneName ? ` / ${zoneName}` : ""}`, kind: "event" });
     } else if (event.type === "helper_add") {
-      entries.push({ title: getHelperEventTitle(payload), time, detail: getHelperEventDetail(payload), kind: "event" });
+      entries.push({ ...baseEntry, title: getHelperEventTitle(payload), detail: getHelperEventDetail(payload), kind: "event" });
     } else if (event.type === "day_close") {
-      entries.push({ title: "\uC5C5\uBB34 \uC885\uB8CC", time, detail: "\uC624\uB298 \uC5C5\uBB34\uAC00 \uC885\uB8CC\uB410\uC2B5\uB2C8\uB2E4.", kind: "done" });
+      entries.push({ ...baseEntry, title: "\uC5C5\uBB34 \uC885\uB8CC", detail: "\uC624\uB298 \uC5C5\uBB34\uAC00 \uC885\uB8CC\uB410\uC2B5\uB2C8\uB2E4.", kind: "done" });
     }
   }
   if (entries.length === 0) {
     entries.push({ title: "\uC5C5\uBB34 \uC2DC\uC791 \uC804", time: "-", detail: "\uC9C4\uC811 \uCD9C\uBC1C \uBC84\uD2BC\uC744 \uB20C\uB7EC \uC2DC\uC791\uD558\uC138\uC694.", kind: "event" });
   }
   return entries;
+}
+function renderLogEntry(entry) {
+  const editing = Boolean(entry.eventId && activeLogEditEventId === entry.eventId);
+  return `
+    <article class="timeline-entry ${entry.kind}${editing ? " editing" : ""}">
+      <div class="timeline-entry-head">
+        <div class="timeline-entry-copy">
+          <strong>${entry.title}</strong>
+          <time>${entry.time}</time>
+          ${entry.detail ? `<p>${entry.detail}</p>` : ""}
+        </div>
+        ${entry.editable && entry.eventId ? `
+          <button class="timeline-edit-btn${editing ? " active" : ""}" data-action="${editing ? "close-log-edit" : "open-log-edit"}" data-event="${escapeAttribute(entry.eventId)}" title="\uB85C\uADF8 \uC9C1\uC811 \uC218\uC815" aria-label="\uB85C\uADF8 \uC9C1\uC811 \uC218\uC815">&#9998;</button>
+        ` : ""}
+      </div>
+      ${editing && entry.eventId ? renderLogInlineEditor(entry.eventId, entry.editKind) : ""}
+    </article>
+  `;
+}
+function renderLogInlineEditor(eventId2, editKind) {
+  if (!currentDay) return "";
+  const event = currentDay.timeline.find((candidate) => candidate.id === eventId2);
+  if (!event || !editKind) return "";
+  const zoneName = event.zoneId ? getZoneName2(event.zoneId) : void 0;
+  const payload = event.payload;
+  const baseId = `log-edit-${event.id}`;
+  if (editKind === "depart") {
+    const total = typeof payload?.total === "number" ? String(payload.total) : "";
+    return renderLogEventTimeEditor(event, "\uC9C4\uC811 \uCD9C\uBC1C \uC218\uC815", "\uCD9C\uBC1C \uC2DC\uAC01\uACFC \uC608\uC0C1 \uC218\uB7C9\uC744 \uD568\uAED8 \uBC14\uB85C\uC7A1\uC2B5\uB2C8\uB2E4.", `
+        <label>\uC608\uC0C1 \uC218\uB7C9
+          <input id="${escapeAttribute(`${baseId}-total`)}" type="text" inputmode="numeric" maxlength="4" data-numeric-limit="4" value="${escapeAttribute(total)}">
+        </label>
+      `, "\uCD9C\uBC1C \uC2DC\uAC01");
+  }
+  if (editKind === "arrive") {
+    return renderLogEventTimeEditor(event, "\uCCAD\uB7C9\uB9AC \uB3C4\uCC29 \uC218\uC815", "\uB3C4\uCC29 \uC2DC\uAC01\uC744 \uACE0\uCE58\uBA74 \uC6B4\uC804 \uC2DC\uAC04\uC774 \uB2E4\uC2DC \uACC4\uC0B0\uB429\uB2C8\uB2E4.", "", "\uB3C4\uCC29 \uC2DC\uAC01");
+  }
+  if (editKind === "zone_start") {
+    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "\uAD6C\uC5ED")} \uC2DC\uC791 \uC218\uC815`, "\uAD6C\uC5ED \uC2DC\uC791 \uC2DC\uAC01\uC744 \uACE0\uCE58\uBA74 \uC55E\uB4A4 \uAD6C\uC5ED \uC21C\uC11C \uAC80\uC0AC\uB3C4 \uAC19\uC774 \uAC70\uCE69\uB2C8\uB2E4.", "", "\uAD6C\uC5ED \uC2DC\uC791 \uC2DC\uAC01");
+  }
+  if (editKind === "sorting_start") {
+    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "\uAD6C\uC5ED")} \uC815\uB9AC \uC2DC\uC791 \uC218\uC815`, "\uC815\uB9AC \uC2DC\uC791 \uC2DC\uAC01\uC744 \uACE0\uCE58\uBA74 \uAD6C\uC5ED \uC6D0\uBCF8 timeline\uC774 \uD568\uAED8 \uC218\uC815\uB429\uB2C8\uB2E4.", "", "\uC815\uB9AC \uC2DC\uC791 \uC2DC\uAC01");
+  }
+  if (editKind === "sorting_end") {
+    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "\uAD6C\uC5ED")} \uC815\uB9AC \uC644\uB8CC \uC218\uC815`, "\uC815\uB9AC \uC644\uB8CC \uC2DC\uAC01\uC744 \uACE0\uCE58\uBA74 \uC815\uB9AC \uC2DC\uAC04\uC774 \uB2E4\uC2DC \uACC4\uC0B0\uB429\uB2C8\uB2E4.", "", "\uC815\uB9AC \uC644\uB8CC \uC2DC\uAC01");
+  }
+  if (editKind === "zone_end") {
+    const delivered = typeof payload?.delivered === "number" ? String(payload.delivered) : "";
+    const failed = typeof payload?.failed === "number" ? String(payload.failed) : "0";
+    const extra = typeof payload?.extra === "number" ? String(payload.extra) : "0";
+    return `
+      <article class="timeline-inline-editor">
+        <strong>${escapeHtml(zoneName ?? "\uAD6C\uC5ED")} \uC644\uB8CC \uC218\uC815</strong>
+        <p class="hint">\uC644\uB8CC \uC2DC\uAC01\uACFC \uC218\uB7C9\uC744 \uBC14\uB85C \uACE0\uCE58\uBA74 \uB9AC\uD3EC\uD2B8\uC640 \uD1B5\uACC4\uB3C4 \uAC19\uC740 \uC6D0\uBCF8\uC5D0\uC11C \uB2E4\uC2DC \uACC4\uC0B0\uB429\uB2C8\uB2E4.</p>
+        <div class="log-inline-grid">
+          ${renderDigitTimeFields(`${baseId}-time`, "\uAD6C\uC5ED \uC644\uB8CC \uC2DC\uAC01", event.at)}
+          <label>\uBC30\uC1A1 \uC218\uB7C9
+            <input id="${escapeAttribute(`${baseId}-delivered`)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${escapeAttribute(delivered)}">
+          </label>
+          <label>\uC2E4\uD328
+            <input id="${escapeAttribute(`${baseId}-failed`)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${escapeAttribute(failed)}">
+          </label>
+          <label>\uCD94\uAC00
+            <input id="${escapeAttribute(`${baseId}-extra`)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${escapeAttribute(extra)}">
+          </label>
+        </div>
+        ${renderLogEditButtons(event.id)}
+      </article>
+    `;
+  }
+  if (editKind === "incident") {
+    const minutes = typeof payload?.minutes === "number" ? String(payload.minutes) : "";
+    const title = typeof payload?.title === "string" ? payload.title : "\uAE30\uD0C0";
+    const scope = typeof payload?.scope === "string" ? payload.scope : event.zoneId ? `zone:${event.zoneId}` : "work";
+    return `
+      <article class="timeline-inline-editor">
+        <strong>\uC774\uBCA4\uD2B8 \uC218\uC815</strong>
+        <p class="hint">\uC774\uBCA4\uD2B8 \uC81C\uBAA9, \uC2DC\uAC04, \uBA54\uBAA8, \uBC94\uC704\uB97C \uD568\uAED8 \uACE0\uCE69\uB2C8\uB2E4.</p>
+        <div class="log-inline-grid">
+          ${renderDigitTimeFields(`${baseId}-time`, "\uAE30\uB85D \uC2DC\uAC01", event.at)}
+          <label>\uC774\uBCA4\uD2B8 \uC774\uB984
+            <input id="${escapeAttribute(`${baseId}-title`)}" type="text" value="${escapeAttribute(title)}">
+          </label>
+          <label>\uC18C\uC694 \uBD84
+            <input id="${escapeAttribute(`${baseId}-minutes`)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${escapeAttribute(minutes)}">
+          </label>
+          <label class="wide">\uC801\uC6A9 \uBC94\uC704
+            <select id="${escapeAttribute(`${baseId}-scope`)}">
+              ${buildLogEventScopeOptions(scope)}
+            </select>
+          </label>
+          <label class="wide">\uBA54\uBAA8
+            <input id="${escapeAttribute(`${baseId}-note`)}" type="text" value="${escapeAttribute(event.note ?? "")}">
+          </label>
+        </div>
+        ${renderLogEditButtons(event.id)}
+      </article>
+    `;
+  }
+  if (editKind === "helper") {
+    const helper = findLogHelperRecord(event);
+    if (!helper) {
+      return `
+        <article class="timeline-inline-editor">
+          <strong>\uB3C4\uC6B0\uBBF8 \uAE30\uB85D \uC218\uC815</strong>
+          <p class="hint">\uC5F0\uACB0\uB41C \uB3C4\uC6B0\uBBF8 \uC6D0\uBCF8\uC744 \uCC3E\uC9C0 \uBABB\uD574 \uC774 \uD56D\uBAA9\uC740 \uC5EC\uAE30\uC11C \uBC14\uB85C \uC218\uC815\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.</p>
+          ${renderLogEditButtons(event.id, "\uB2EB\uAE30")}
+        </article>
+      `;
+    }
+    const kind = normalizeReceivedHelperKind(helper.kind ?? payload?.helperKind) ?? "free_received";
+    const quantity = typeof helper.quantity === "number" ? helper.quantity : typeof payload?.quantity === "number" ? payload.quantity : 0;
+    return `
+      <article class="timeline-inline-editor">
+        <strong>${escapeHtml(helper.name)} \uC218\uC815</strong>
+        <p class="hint">${hasHelperSourceZone(event) ? "\uAD6C\uC5ED \uB3D9\uD589 \uAE30\uB85D\uC740 \uC218\uB7C9 0\uAC1C\uB3C4 \uD5C8\uC6A9\uB418\uBA70 \uCD1D\uB7C9 \uC911\uBCF5 \uD569\uC0B0\uC5D0\uC11C \uC81C\uC678\uB429\uB2C8\uB2E4." : "\uB3C4\uC6B0\uBBF8 \uD575\uC2EC \uC2DC\uAC01\uACFC \uC218\uB7C9\uC744 \uBC14\uB85C \uACE0\uCE69\uB2C8\uB2E4."}</p>
+        <div class="log-inline-grid">
+          <label>\uB3C4\uC6B0\uBBF8 \uC885\uB958
+            <select data-helper-kind="${escapeAttribute(helper.id)}">
+              <option value="free_received"${kind === "free_received" ? " selected" : ""}>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uBB34\uB8CC</option>
+              <option value="paid_received"${kind === "paid_received" ? " selected" : ""}>\uB3C4\uC6B0\uBBF8 \uBC30\uC1A1 \uC720\uB8CC</option>
+            </select>
+          </label>
+          <label>\uC218\uB7C9
+            <input data-helper-quantity="${escapeAttribute(helper.id)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${quantity > 0 ? quantity : ""}">
+          </label>
+          ${renderHelperDigitTimeFields(helper.id, "\uAE30\uB85D \uC2DC\uAC01", event.at)}
+        </div>
+        ${renderLogEditButtons(event.id)}
+      </article>
+    `;
+  }
+  return "";
+}
+function renderLogEventTimeEditor(event, title, hint, extraFields = "", timeLabel = "\uAE30\uB85D \uC2DC\uAC01") {
+  const baseId = `log-edit-${event.id}`;
+  return `
+    <article class="timeline-inline-editor">
+      <strong>${title}</strong>
+      <p class="hint">${hint}</p>
+      <div class="log-inline-grid">
+        ${renderDigitTimeFields(`${baseId}-time`, timeLabel, event.at)}
+        ${extraFields}
+      </div>
+      ${renderLogEditButtons(event.id)}
+    </article>
+  `;
+}
+function renderLogEditButtons(eventId2, closeLabel = "\uCDE8\uC18C") {
+  return `
+    <div class="row-actions">
+      <button data-action="save-log-edit" data-event="${escapeAttribute(eventId2)}">\uC800\uC7A5</button>
+      <button class="secondary" data-action="close-log-edit" data-event="${escapeAttribute(eventId2)}">${closeLabel}</button>
+    </div>
+  `;
+}
+function buildLogEventScopeOptions(selectedScope) {
+  const options = [{ value: "work", label: "\uD558\uB8E8 \uC804\uCCB4" }, ...(currentDay?.zones ?? []).map((zone) => ({ value: `zone:${zone.id}`, label: `${zone.order}\uAD6C\uC5ED \xB7 ${zone.name}` }))];
+  return options.map((option) => `
+    <option value="${escapeAttribute(option.value)}"${option.value === selectedScope ? " selected" : ""}>${escapeHtml(option.label)}</option>
+  `).join("");
+}
+function findLogHelperRecord(event) {
+  const payload = event.payload;
+  if (typeof payload?.helperId === "string") {
+    const byId = currentDay?.helpers.find((helper) => helper.id === payload.helperId);
+    if (byId) return byId;
+  }
+  return currentDay?.helpers.find((helper) => helper.linkedEventIds.includes(event.id));
+}
+function getLogEditKind(event) {
+  switch (event.type) {
+    case "depart_jinjeop":
+      return "depart";
+    case "arrive_cheongnyangni":
+      return "arrive";
+    case "zone_start":
+      return "zone_start";
+    case "sorting_start":
+      return "sorting_start";
+    case "sorting_end":
+      return "sorting_end";
+    case "zone_end":
+      return "zone_end";
+    case "incident":
+      return "incident";
+    case "helper_add":
+      return "helper";
+    default:
+      return void 0;
+  }
 }
 function getDriveMinutesForDay(dayRecord) {
   const depart = dayRecord.timeline.find((event) => event.type === "depart_jinjeop");
@@ -3386,12 +3582,14 @@ async function handleAction(button) {
   }
   if (action === "refresh") {
     await loadToday();
+    activeLogEditEventId = "";
     render();
     return;
   }
   if (action === "load-today") {
     await loadToday();
     activeCorrectionTargetId = "";
+    activeLogEditEventId = "";
     activeTab = "backup";
     render();
     return;
@@ -3501,6 +3699,21 @@ async function handleAction(button) {
   if (action === "add-helper-paid") {
     addReceivedHelper("paid_received");
     await saveAndRender();
+    return;
+  }
+  if (action === "open-log-edit") {
+    activeLogEditEventId = button.dataset.event ?? "";
+    activeTab = "log";
+    render();
+    return;
+  }
+  if (action === "close-log-edit") {
+    activeLogEditEventId = "";
+    render();
+    return;
+  }
+  if (action === "save-log-edit") {
+    await saveLogEdit(button.dataset.event);
     return;
   }
   if (action === "apply-zone-correction" && zoneId) {
@@ -3837,8 +4050,163 @@ async function saveSelectedZoneCorrection(zoneId) {
   };
   normalizeZoneOrdersByActualStart();
   activeCorrectionTargetId = `zone:${zoneId}`;
+  activeLogEditEventId = "";
   toast(`${nextName} \uAE30\uB85D\uC744 \uB2E4\uC2DC \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.`);
   await saveAndRender();
+}
+async function saveLogEdit(eventId2) {
+  if (!currentDay || !eventId2) return;
+  const event = currentDay.timeline.find((candidate) => candidate.id === eventId2);
+  if (!event) {
+    activeLogEditEventId = "";
+    toast("\uC218\uC815\uD560 \uB85C\uADF8 \uC6D0\uBCF8\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+    render();
+    return;
+  }
+  const editKind = getLogEditKind(event);
+  if (!editKind) {
+    toast("\uC774 \uD56D\uBAA9\uC740 \uC544\uC9C1 \uC9C1\uC811 \uC218\uC815 \uB300\uC0C1\uC774 \uC544\uB2D9\uB2C8\uB2E4.");
+    return;
+  }
+  if (editKind === "helper") {
+    const helper = findLogHelperRecord(event);
+    if (!helper) {
+      toast("\uC5F0\uACB0\uB41C \uB3C4\uC6B0\uBBF8 \uAE30\uB85D\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+      return;
+    }
+    activeLogEditEventId = "";
+    await saveHelperCorrection(helper.id);
+    return;
+  }
+  if (editKind === "incident") {
+    await saveLogIncidentEdit(event);
+    return;
+  }
+  if (editKind === "depart" || editKind === "arrive") {
+    await saveLogCoreEventEdit(event);
+    return;
+  }
+  await saveLogZoneEventEdit(event);
+}
+async function saveLogCoreEventEdit(event) {
+  if (!currentDay) return;
+  const baseId = `log-edit-${event.id}`;
+  const label = event.type === "depart_jinjeop" ? "\uCD9C\uBC1C \uC2DC\uAC01" : "\uB3C4\uCC29 \uC2DC\uAC01";
+  const at = readRequiredDigitTimeInput(`${baseId}-time`, label, event.at);
+  if (!at) return;
+  if (event.type === "depart_jinjeop") {
+    const arrive = currentDay.timeline.find((candidate) => candidate.type === "arrive_cheongnyangni");
+    if (isAfter(at, arrive?.at)) {
+      toast("\uC9C4\uC811 \uCD9C\uBC1C\uC740 \uCCAD\uB7C9\uB9AC \uB3C4\uCC29\uBCF4\uB2E4 \uB2A6\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
+      return;
+    }
+    const totalInput = readLimitedNumberField(`#${baseId}-total`, 4);
+    const payload = event.payload && typeof event.payload === "object" ? { ...event.payload } : {};
+    if (totalInput.hasValue) {
+      payload.total = totalInput.value;
+    } else {
+      delete payload.total;
+    }
+    await downloadPreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
+    currentDay = updateEvent(currentDay, event.id, { at, payload });
+    currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_depart_edit", `\uC9C4\uC811 \uCD9C\uBC1C ${formatTime(event.at)} -> ${formatTime(at)}`);
+  } else {
+    const depart = currentDay.timeline.find((candidate) => candidate.type === "depart_jinjeop");
+    if (isBefore(at, depart?.at)) {
+      toast("\uCCAD\uB7C9\uB9AC \uB3C4\uCC29\uC740 \uC9C4\uC811 \uCD9C\uBC1C\uBCF4\uB2E4 \uBE60\uB97C \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
+      return;
+    }
+    const firstZoneStart = currentDay.timeline.find((candidate) => candidate.type === "zone_start");
+    if (isAfter(at, firstZoneStart?.at)) {
+      toast("\uCCAD\uB7C9\uB9AC \uB3C4\uCC29\uC740 \uCCAB \uAD6C\uC5ED \uC2DC\uC791\uBCF4\uB2E4 \uB2A6\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
+      return;
+    }
+    await downloadPreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
+    currentDay = updateEvent(currentDay, event.id, { at });
+    currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_arrive_edit", `\uCCAD\uB7C9\uB9AC \uB3C4\uCC29 ${formatTime(event.at)} -> ${formatTime(at)}`);
+  }
+  activeLogEditEventId = "";
+  toast("\uB85C\uADF8 \uC6D0\uBCF8 \uAE30\uB85D\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.");
+  await saveAndRender();
+}
+async function saveLogIncidentEdit(event) {
+  if (!currentDay) return;
+  const payload = event.payload && typeof event.payload === "object" ? { ...event.payload } : {};
+  const baseId = `log-edit-${event.id}`;
+  const at = readRequiredDigitTimeInput(`${baseId}-time`, "\uC774\uBCA4\uD2B8 \uC2DC\uAC01", event.at);
+  if (!at) return;
+  const title = readText(`#${baseId}-title`, typeof payload.title === "string" ? payload.title : "\uAE30\uD0C0");
+  const minutesInput = readLimitedNumberField(`#${baseId}-minutes`, 3);
+  const scope = readText(`#${baseId}-scope`, typeof payload.scope === "string" ? payload.scope : "work");
+  const zoneId = scope.startsWith("zone:") ? scope.slice("zone:".length) : void 0;
+  payload.title = title;
+  payload.scope = zoneId ? `zone:${zoneId}` : "work";
+  if (minutesInput.hasValue) {
+    payload.minutes = minutesInput.value;
+  } else {
+    delete payload.minutes;
+  }
+  await downloadPreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
+  currentDay = updateEvent(currentDay, event.id, { at, zoneId, payload, note: readText(`#${baseId}-note`, "") || void 0 });
+  currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_incident_edit", `${title} \uC774\uBCA4\uD2B8 \uC218\uC815`);
+  activeLogEditEventId = "";
+  toast("\uC774\uBCA4\uD2B8 \uC6D0\uBCF8 \uAE30\uB85D\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.");
+  await saveAndRender();
+}
+async function saveLogZoneEventEdit(event) {
+  if (!currentDay || !event.zoneId) return;
+  const zoneId = event.zoneId;
+  const start = latestZoneEvent(zoneId, "zone_start");
+  const end = latestZoneEvent(zoneId, "zone_end");
+  const sortingStart = latestZoneEvent(zoneId, "sorting_start");
+  const sortingEnd = latestZoneEvent(zoneId, "sorting_end");
+  const baseId = `log-edit-${event.id}`;
+  const nextStartAt = event.type === "zone_start" ? readRequiredDigitTimeInput(`${baseId}-time`, "\uAD6C\uC5ED \uC2DC\uC791 \uC2DC\uAC01", start?.at ?? event.at) : start?.at;
+  const nextSortingStartAt = event.type === "sorting_start" ? readRequiredDigitTimeInput(`${baseId}-time`, "\uC815\uB9AC \uC2DC\uC791 \uC2DC\uAC01", sortingStart?.at ?? event.at) : sortingStart?.at;
+  const nextSortingEndAt = event.type === "sorting_end" ? readRequiredDigitTimeInput(`${baseId}-time`, "\uC815\uB9AC \uC644\uB8CC \uC2DC\uAC01", sortingEnd?.at ?? event.at) : sortingEnd?.at;
+  const nextEndAt = event.type === "zone_end" ? readRequiredDigitTimeInput(`${baseId}-time`, "\uAD6C\uC5ED \uC644\uB8CC \uC2DC\uAC01", end?.at ?? event.at) : end?.at;
+  if (event.type === "zone_start" && !nextStartAt || event.type === "sorting_start" && !nextSortingStartAt || event.type === "sorting_end" && !nextSortingEndAt || event.type === "zone_end" && !nextEndAt) {
+    return;
+  }
+  const timeError = validateZoneEditTimes(zoneId, { startAt: nextStartAt, endAt: nextEndAt, sortingStartAt: nextSortingStartAt, sortingEndAt: nextSortingEndAt });
+  if (timeError) {
+    toast(timeError);
+    return;
+  }
+  const updateInput = { zoneId, reason: "log_inline_zone_edit" };
+  if (event.type === "zone_start") updateInput.startAt = nextStartAt;
+  if (event.type === "sorting_start") updateInput.sortingStartAt = nextSortingStartAt;
+  if (event.type === "sorting_end") updateInput.sortingEndAt = nextSortingEndAt;
+  if (event.type === "zone_end") {
+    const deliveredInput = readLimitedNumberField(`#${baseId}-delivered`, 3);
+    const delivered = resolveValidatedDelivered(zoneId, deliveredInput.value, deliveredInput.hasValue, { mode: "actual", riskContext: "block" });
+    if (delivered === void 0) return;
+    updateInput.endAt = nextEndAt;
+    updateInput.delivered = delivered;
+    updateInput.failed = readLimitedNumber(`#${baseId}-failed`, 3);
+    updateInput.extra = readLimitedNumber(`#${baseId}-extra`, 3);
+  }
+  await downloadPreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
+  currentDay = applyCompletedZoneEdit(currentDay, updateInput);
+  currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_zone_edit", `${event.type} \uC218\uC815`);
+  activeLogEditEventId = "";
+  toast("\uAD6C\uC5ED \uC6D0\uBCF8 \uAE30\uB85D\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.");
+  await saveAndRender();
+}
+function withLogInlineAdjustment(dayRecord, eventId2, reason, note) {
+  const createdAt = nowIso();
+  return {
+    ...dayRecord,
+    adjustments: [
+      ...dayRecord.adjustments,
+      { id: `${reason}-${Date.now()}`, eventId: eventId2, reason, note, createdAt }
+    ],
+    meta: {
+      ...dayRecord.meta,
+      updatedAt: createdAt,
+      recoveryStatus: dayRecord.meta.recoveryStatus === "none" ? "needsReview" : dayRecord.meta.recoveryStatus
+    }
+  };
 }
 function resolveCorrectionDelivered(zoneId, entered, hasValue) {
   const mode = readText("#correction-zone-quantity-mode", "actual");
@@ -4633,6 +5001,7 @@ async function loadCorrectionDate() {
   currentDay = day;
   activeTab = "backup";
   activeCorrectionTargetId = "";
+  activeLogEditEventId = "";
   await refreshHistory();
   render();
   toast(`${date} \uAE30\uB85D\uC744 \uBD88\uB7EC\uC654\uC2B5\uB2C8\uB2E4.`);
@@ -4873,6 +5242,74 @@ function formatIsoForTimeInput(iso) {
   if (!iso) return "";
   const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? "" : formatTimeOnlyValue(parsed);
+}
+function getDigitTimeValues(iso) {
+  const value = formatIsoForTimeInput(iso);
+  if (!value) return { hour: "", minute: "" };
+  const [hour = "", minute = ""] = value.split(":");
+  return { hour, minute };
+}
+function renderDigitTimeFields(inputId, label, iso) {
+  const { hour, minute } = getDigitTimeValues(iso);
+  return `
+    <label>${label}
+      <span class="digit-time-fields">
+        <input id="${escapeAttribute(`${inputId}-hour`)}" type="text" inputmode="numeric" maxlength="2" data-numeric-limit="2" value="${escapeAttribute(hour)}">
+        <span>:</span>
+        <input id="${escapeAttribute(`${inputId}-minute`)}" type="text" inputmode="numeric" maxlength="2" data-numeric-limit="2" value="${escapeAttribute(minute)}">
+      </span>
+    </label>
+  `;
+}
+function renderHelperDigitTimeFields(helperId, label, iso) {
+  const { hour, minute } = getDigitTimeValues(iso);
+  return `
+    <label>${label}
+      <span class="digit-time-fields">
+        <input data-helper-at-hour="${escapeAttribute(helperId)}" type="text" inputmode="numeric" maxlength="2" data-numeric-limit="2" value="${escapeAttribute(hour)}">
+        <span>:</span>
+        <input data-helper-at-minute="${escapeAttribute(helperId)}" type="text" inputmode="numeric" maxlength="2" data-numeric-limit="2" value="${escapeAttribute(minute)}">
+      </span>
+    </label>
+  `;
+}
+function readRequiredDigitTimeInput(inputId, label, existingIso) {
+  const hour = readDigitTimeToken(`#${inputId}-hour`);
+  const minute = readDigitTimeToken(`#${inputId}-minute`);
+  return buildDigitTimeIso(hour, minute, label, existingIso);
+}
+function readHelperDigitTimeInput(helperId, label, existingIso) {
+  const hourInput = Array.from(document.querySelectorAll("input[data-helper-at-hour]")).find((candidate) => candidate.dataset.helperAtHour === helperId);
+  const minuteInput = Array.from(document.querySelectorAll("input[data-helper-at-minute]")).find((candidate) => candidate.dataset.helperAtMinute === helperId);
+  if (!hourInput && !minuteInput) return void 0;
+  const hour = normalizeDigitToken(hourInput);
+  const minute = normalizeDigitToken(minuteInput);
+  return buildDigitTimeIso(hour, minute, label, existingIso);
+}
+function readDigitTimeToken(selector) {
+  return normalizeDigitToken(document.querySelector(selector));
+}
+function normalizeDigitToken(input) {
+  const cleaned = (input?.value ?? "").replace(/\D/g, "").slice(0, 2);
+  if (input && input.value !== cleaned) input.value = cleaned;
+  return cleaned;
+}
+function buildDigitTimeIso(hourToken, minuteToken, label, existingIso) {
+  if (!hourToken && !minuteToken) {
+    toast(`${label}\uC744 \uC785\uB825\uD558\uC138\uC694.`);
+    return void 0;
+  }
+  if (!hourToken || !minuteToken) {
+    toast(`${label} \uC2DC\uC640 \uBD84\uC744 \uBAA8\uB450 \uC785\uB825\uD558\uC138\uC694.`);
+    return void 0;
+  }
+  const hour = Number(hourToken);
+  const minute = Number(minuteToken);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour > 23 || minute > 59) {
+    toast(`${label} \uAC12\uC744 \uB2E4\uC2DC \uD655\uC778\uD558\uC138\uC694.`);
+    return void 0;
+  }
+  return mergeCurrentDateAndTime(`${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`, existingIso);
 }
 function formatTimeInputValue(date) {
   const y = date.getFullYear();
@@ -5144,10 +5581,18 @@ function readHelperCorrectionQuantity(helperId) {
   return Number.isFinite(value) ? value : 0;
 }
 function readHelperCorrectionAt(helperId) {
+  const helper = currentDay?.helpers.find((candidate) => candidate.id === helperId);
+  const helperEvent = currentDay?.timeline.find((event) => event.type === "helper_add" && helper?.linkedEventIds.includes(event.id));
+  const digitValue = readHelperDigitTimeInput(helperId, "\uB3C4\uC6B0\uBBF8 \uAE30\uB85D \uC2DC\uAC01", helperEvent?.at);
+  if (digitValue !== void 0) return digitValue;
   const input = Array.from(document.querySelectorAll("input[data-helper-at]")).find((candidate) => candidate.dataset.helperAt === helperId);
-  if (!input?.value) return void 0;
-  const parsed = new Date(input.value);
-  return Number.isNaN(parsed.getTime()) ? void 0 : parsed.toISOString();
+  const value = input?.value;
+  if (!value) return void 0;
+  if (value.includes("T")) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? void 0 : parsed.toISOString();
+  }
+  return mergeCurrentDateAndTime(value, helperEvent?.at);
 }
 function readHelperZoneRestoreTarget(helperId) {
   const select = Array.from(document.querySelectorAll("select[data-helper-zone-restore]")).find((candidate) => candidate.dataset.helperZoneRestore === helperId);
