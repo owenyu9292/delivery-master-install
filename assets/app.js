@@ -2049,9 +2049,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.23-alt-zone-priority";
-var APP_UPDATED_LABEL = "2026-07-05 \uB300\uCCB4\uBC30\uC1A1 \uC989\uC2DC \uC9C4\uC785";
-var CACHE_VERSION = "v24";
+var APP_VERSION = "0.2.24-cache-refresh";
+var APP_UPDATED_LABEL = "2026-07-05 \uCE90\uC2DC \uAC31\uC2E0 \uBCF4\uAC15";
+var CACHE_VERSION = "v25";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
