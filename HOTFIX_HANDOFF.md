@@ -258,3 +258,10 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - Browser validation must use background/headless Chrome when possible.
 - Do not open visible browser windows during field work unless explicitly approved.
 - v22 smoke passed with log direct edit checks: button visible, digital-only time fields, save reflected in log data.
+
+## v27 캐시 강제 갱신 핫픽스
+- 증상: 푸시 후 휴대폰 PWA가 v26으로 올라오지 않고 앱 내 새로고침 버튼도 갱신하지 못함.
+- 조치: 새로고침 버튼을 hard refresh로 변경. 서비스워커 unregister, Cache Storage 삭제, app-refresh 쿼리로 재진입.
+- 추가: serviceWorker.register updateViaCache none, registration.update 호출. public/sw.js/SW 템플릿에 SKIP_WAITING 메시지 핸들러 추가.
+- 검증: npm run check, npm run build, browser-smoke, browser-alt-stress 통과.
+

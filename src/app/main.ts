@@ -1880,9 +1880,7 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   }
 
   if (action === "refresh") {
-    await loadToday();
-    activeLogEditEventId = "";
-    render();
+    await hardRefreshApp();
     return;
   }
   if (action === "load-today") {
@@ -4282,8 +4280,29 @@ function toast(message: string): void {
 async function registerServiceWorker(): Promise<void> {
   if (!("serviceWorker" in navigator)) return;
   try {
-    await navigator.serviceWorker.register("./sw.js");
+    const registration = await navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" });
+    await registration.update();
   } catch (error) {
     console.warn("Service worker registration failed; app boot continues.", error);
   }
 }
+
+async function hardRefreshApp(): Promise<void> {
+  toast("앱 캐시를 비우고 새 버전을 불러옵니다.");
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+  } catch (error) {
+    console.warn("Hard refresh cache cleanup failed; forcing reload anyway.", error);
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set("app-refresh", String(Date.now()));
+  window.location.replace(url.toString());
+}
+

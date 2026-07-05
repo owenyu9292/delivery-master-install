@@ -1,4 +1,4 @@
-const CACHE_NAME = "delivery-master-install-v26";
+﻿const CACHE_NAME = "delivery-master-install-v27";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,6 +8,11 @@ const ASSETS = [
   "./assets/app.js"
 ];
 
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -35,3 +40,4 @@ self.addEventListener("fetch", (event) => {
       .catch(() => caches.match(event.request))
   );
 });
+

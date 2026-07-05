@@ -2049,9 +2049,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.25-repeat-alt-zones";
-var APP_UPDATED_LABEL = "2026-07-05 \uB300\uCCB4\uBC30\uC1A1 \uBC18\uBCF5 \uCD94\uAC00";
-var CACHE_VERSION = "v26";
+var APP_VERSION = "0.2.26-cache-refresh";
+var APP_UPDATED_LABEL = "2026-07-05 \uCE90\uC2DC \uAC15\uC81C \uAC31\uC2E0";
+var CACHE_VERSION = "v27";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -3593,9 +3593,7 @@ async function handleAction(button) {
     return;
   }
   if (action === "refresh") {
-    await loadToday();
-    activeLogEditEventId = "";
-    render();
+    await hardRefreshApp();
     return;
   }
   if (action === "load-today") {
@@ -5657,9 +5655,28 @@ function toast(message) {
 async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   try {
-    await navigator.serviceWorker.register("./sw.js");
+    const registration = await navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" });
+    await registration.update();
   } catch (error) {
     console.warn("Service worker registration failed; app boot continues.", error);
   }
+}
+async function hardRefreshApp() {
+  toast("\uC571 \uCE90\uC2DC\uB97C \uBE44\uC6B0\uACE0 \uC0C8 \uBC84\uC804\uC744 \uBD88\uB7EC\uC635\uB2C8\uB2E4.");
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+  } catch (error) {
+    console.warn("Hard refresh cache cleanup failed; forcing reload anyway.", error);
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set("app-refresh", String(Date.now()));
+  window.location.replace(url.toString());
 }
 //# sourceMappingURL=app.js.map

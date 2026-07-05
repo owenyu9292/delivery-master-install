@@ -1136,3 +1136,10 @@ git 작업:
 - `scripts/browser-alt-stress.mjs`에 `today-alt-alt-alt-miju-hils` 시나리오를 추가했다.
 - 오늘 핫픽스 리포트 순서인 `대체배송 -> 대체배송 2 -> 대체배송 3 -> 미주 -> 힐스테이트`를 로컬 정식 수정본에서 재검수했다.
 - 결과: 통과. 남은 대체배송 대기 없음, 업무 종료 가능, NaN/음수 수량 없음.
+
+## 2026-07-05 18:06:02 +09:00 - v27 캐시 강제 갱신 핫픽스
+- 앱 상단 새로고침 버튼을 데이터 reload가 아니라 서비스워커 등록 해제, Cache Storage 삭제, cache-busting URL 재진입으로 변경했다.
+- 서비스워커 등록 시 updateViaCache none 및 registration.update를 호출해 배포 후 새 sw.js 확인을 강화했다.
+- public/sw.js 템플릿과 루트 sw.js에 SKIP_WAITING 메시지 핸들러를 반영했다.
+- 검증: npm run check, npm run build, browser-smoke 411x762/DPR 2.63, browser-alt-stress 통과.
+
