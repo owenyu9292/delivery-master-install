@@ -1,5 +1,12 @@
 # 2026-06-07
 
+- 2026-07-05 v23 `multiple-alt-zones`
+  - 기록자: 핫픽스 채널 / 채널: hotfix
+  - 첫 구역을 대체배송으로 시작해 완료한 뒤에도 다음 기본 구역 시작 전 대체배송/추가구역을 먼저 추가할 수 있게 했다.
+  - 진행 중 추가한 대체배송은 현재 미시작 구역 앞에 들어가고 즉시 시작된다.
+  - 앱/캐시: `0.2.22-multiple-alt-zones`, `delivery-master-install-v23`.
+  - 검수: `npm run check` 50/50 통과, `npm run build` 통과, dist/루트 게시 파일 해시 일치.
+
 - 2026-06-17 v21 `risk-quantity-recovery`
   - 기록자: 일반 작업창 / 채널: main
   - 과대 오스캔/위험 수량 입력 시 `confirm` 한 번으로 저장되던 흐름을 제거했다.

@@ -2049,9 +2049,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.21-log-direct-edit";
-var APP_UPDATED_LABEL = "2026-07-04 \uB85C\uADF8 \uC9C1\uC811 \uC218\uC815";
-var CACHE_VERSION = "v22";
+var APP_VERSION = "0.2.22-multiple-alt-zones";
+var APP_UPDATED_LABEL = "2026-07-05 \uB300\uCCB4\uBC30\uC1A1 \uC5F0\uC18D \uCD94\uAC00";
+var CACHE_VERSION = "v23";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -3113,11 +3113,19 @@ function renderWorkOrderStep() {
 }
 function renderZoneStartStep(zone) {
   const orderEditor = hasAnyZoneStarted() ? "" : renderZoneOrderEditor();
+  const inProgressExtraButtons = shouldOfferExtraZoneBefore(zone) ? `
+      <div class="segmented">
+        <button class="secondary" data-action="add-alt-zone">\uB300\uCCB4\uBC30\uC1A1 \uBA3C\uC800 \uCD94\uAC00</button>
+        <button class="secondary" data-action="add-custom-zone">\uCD94\uAC00\uAD6C\uC5ED \uBA3C\uC800 \uCD94\uAC00</button>
+      </div>
+      <label>\uCD94\uAC00\uAD6C\uC5ED \uC774\uB984<input id="custom-zone-name" type="text" maxlength="24" placeholder="\uC608: \uC0C1\uAC00 \uCD94\uAC00"></label>
+    ` : "";
   return `
     <section class="panel focus">
       <p class="step">${zone.order} / ${escapeHtml(zone.name)}</p>
       <h2>${escapeHtml(zone.name)} \uC2DC\uC791</h2>
       <p class="hint">${zone.id === "miju" ? "\uBBF8\uC8FC\uB294 1,2,3\uB3D9\uACFC \uB098\uBA38\uC9C0 \uC218\uB7C9\uC744 \uB098\uB220 \uC785\uB825\uD569\uB2C8\uB2E4." : "\uBC30\uC1A1 \uC218\uB7C9\uACFC \uC815\uB9AC \uC2DC\uC791/\uC644\uB8CC\uB97C \uBD84\uB9AC\uD574\uC11C \uAE30\uB85D\uD569\uB2C8\uB2E4."}</p>
+      ${inProgressExtraButtons}
       <div class="segmented">
         <button data-action="zone-start" data-zone="${zone.id}">${escapeHtml(zone.name)} \uC2DC\uC791</button>
         ${isExtraZone(zone.id) ? `<button class="secondary" data-action="skip-zone" data-zone="${zone.id}">${escapeHtml(zone.name)} \uC5C6\uC74C</button>` : ""}
@@ -3865,7 +3873,8 @@ function addExtraZone(kind, requestedName) {
   if (!currentDay || getActiveExtraZone()) return;
   const id = createExtraZoneId(kind);
   const defaultName = kind === "alt" ? getNextAltZoneName() : requestedName?.trim() || "\uCD94\uAC00 \uAD6C\uC5ED";
-  ensureZone(id, defaultName, getNextZoneOrder());
+  ensureZone(id, defaultName, getExtraZoneInsertOrder());
+  normalizeZoneOrders();
   addZoneStart(id);
 }
 function setWorkOrder(orderValue) {
@@ -5091,6 +5100,14 @@ function getActiveExtraZone() {
 function getCurrentWorkZone() {
   if (!currentDay) return void 0;
   return [...currentDay.zones].sort((a, b) => a.order - b.order).find((zone) => !hasZoneEnded(zone.id));
+}
+function shouldOfferExtraZoneBefore(zone) {
+  return hasAnyZoneStarted() && !hasZoneStarted(zone.id);
+}
+function getExtraZoneInsertOrder() {
+  const current = getCurrentWorkZone();
+  if (current && !hasZoneStarted(current.id)) return current.order;
+  return getNextZoneOrder();
 }
 function getDefaultEventScope() {
   const current = getCurrentWorkZone();

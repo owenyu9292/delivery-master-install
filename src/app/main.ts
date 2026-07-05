@@ -1319,11 +1319,21 @@ function renderWorkOrderStep(): string {
 
 function renderZoneStartStep(zone: ZoneRecord): string {
   const orderEditor = hasAnyZoneStarted() ? "" : renderZoneOrderEditor();
+  const inProgressExtraButtons = shouldOfferExtraZoneBefore(zone)
+    ? `
+      <div class="segmented">
+        <button class="secondary" data-action="add-alt-zone">대체배송 먼저 추가</button>
+        <button class="secondary" data-action="add-custom-zone">추가구역 먼저 추가</button>
+      </div>
+      <label>추가구역 이름<input id="custom-zone-name" type="text" maxlength="24" placeholder="예: 상가 추가"></label>
+    `
+    : "";
   return `
     <section class="panel focus">
       <p class="step">${zone.order} / ${escapeHtml(zone.name)}</p>
       <h2>${escapeHtml(zone.name)} 시작</h2>
       <p class="hint">${zone.id === "miju" ? "미주는 1,2,3동과 나머지 수량을 나눠 입력합니다." : "배송 수량과 정리 시작/완료를 분리해서 기록합니다."}</p>
+      ${inProgressExtraButtons}
       <div class="segmented">
         <button data-action="zone-start" data-zone="${zone.id}">${escapeHtml(zone.name)} 시작</button>
         ${isExtraZone(zone.id) ? `<button class="secondary" data-action="skip-zone" data-zone="${zone.id}">${escapeHtml(zone.name)} 없음</button>` : ""}
@@ -2157,7 +2167,8 @@ function addExtraZone(kind: "alt" | "custom", requestedName?: string): void {
   if (!currentDay || getActiveExtraZone()) return;
   const id = createExtraZoneId(kind);
   const defaultName = kind === "alt" ? getNextAltZoneName() : requestedName?.trim() || "추가 구역";
-  ensureZone(id, defaultName, getNextZoneOrder());
+  ensureZone(id, defaultName, getExtraZoneInsertOrder());
+  normalizeZoneOrders();
   addZoneStart(id);
 }
 
@@ -3551,6 +3562,16 @@ function getCurrentWorkZone(): ZoneRecord | undefined {
   return [...currentDay.zones]
     .sort((a, b) => a.order - b.order)
     .find((zone) => !hasZoneEnded(zone.id));
+}
+
+function shouldOfferExtraZoneBefore(zone: ZoneRecord): boolean {
+  return hasAnyZoneStarted() && !hasZoneStarted(zone.id);
+}
+
+function getExtraZoneInsertOrder(): number {
+  const current = getCurrentWorkZone();
+  if (current && !hasZoneStarted(current.id)) return current.order;
+  return getNextZoneOrder();
 }
 
 function getDefaultEventScope(): string {
