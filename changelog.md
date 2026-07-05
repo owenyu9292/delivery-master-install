@@ -1120,3 +1120,19 @@ git 작업:
 - 브라우저 검수는 headless Chrome으로 전환했다.
 - 최종 스모크 통과 항목에 로그 직접 수정 3개 항목을 포함했다: `logEditButtonShown`, `logEditDigitalOnly`, `logDirectEditSaved`.
 - 기존 선택형 기록 정정은 접힌 보조 패널 구조에 맞춰 스모크 기준을 저장 성공 기준으로 갱신했다.
+
+## 2026-07-05 v26 대체배송 반복 추가 준비
+
+- `src/app/main.ts`: 다음 구역 시작 전 대체배송을 계속 추가하는 현장 동선을 명확히 노출했다.
+- `styles.css`: 대체배송 반복 추가 안내 박스를 추가했다.
+- `scripts/browser-smoke.mjs`: 첫 구역 대체배송 후 대체배송 2, 대체배송 3을 연속 추가하는 검수 루트를 추가했다.
+- `scripts/browser-alt-stress.mjs`: 대체배송이 첫 구역/중간/끝에서 반복 등장하는 세 가지 가혹 검수 루트를 추가했다.
+- `src/app/version.ts`: 로컬 후보 버전을 `0.2.25-repeat-alt-zones / v26`으로 올렸다.
+- 검수: `npm run check`, `npm run build`, `node scripts/browser-smoke.mjs`, `node scripts/browser-alt-stress.mjs` 통과.
+- 상태: 로컬 수정/검수 완료. 사용자 업무 종료 전 푸시/배포 금지.
+
+## 2026-07-05 오늘 실제 순서 검수 추가
+
+- `scripts/browser-alt-stress.mjs`에 `today-alt-alt-alt-miju-hils` 시나리오를 추가했다.
+- 오늘 핫픽스 리포트 순서인 `대체배송 -> 대체배송 2 -> 대체배송 3 -> 미주 -> 힐스테이트`를 로컬 정식 수정본에서 재검수했다.
+- 결과: 통과. 남은 대체배송 대기 없음, 업무 종료 가능, NaN/음수 수량 없음.

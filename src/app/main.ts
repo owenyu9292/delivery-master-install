@@ -1321,8 +1321,12 @@ function renderZoneStartStep(zone: ZoneRecord): string {
   const orderEditor = hasAnyZoneStarted() ? "" : renderZoneOrderEditor();
   const inProgressExtraButtons = shouldOfferExtraZoneBefore(zone)
     ? `
+      <div class="field-action-note">
+        <strong>대체배송을 더 먼저 해야 하면 여기서 계속 추가합니다.</strong>
+        <span>추가한 대체배송은 ${escapeHtml(zone.name)} 앞에 끼워 넣고 바로 시작합니다.</span>
+      </div>
       <div class="segmented">
-        <button class="secondary" data-action="add-alt-zone">대체배송 먼저 추가</button>
+        <button data-action="add-alt-zone">대체배송 계속 추가</button>
         <button class="secondary" data-action="add-custom-zone">추가구역 먼저 추가</button>
       </div>
       <label>추가구역 이름<input id="custom-zone-name" type="text" maxlength="24" placeholder="예: 상가 추가"></label>
@@ -1426,9 +1430,9 @@ function renderExtraZoneChoiceStep(): string {
     <section class="panel focus">
       <p class="step">5 / 추가 구역</p>
       <h2>대체배송 또는 구역 추가</h2>
-      <p class="hint">힐스 이후에 생긴 대체배송, 임시 구역, 추가 물량을 여기에 붙입니다. 없으면 바로 업무 종료로 넘어가면 됩니다.</p>
+      <p class="hint">오늘 중간중간 생긴 대체배송, 임시 구역, 추가 물량을 계속 붙입니다. 없으면 업무 종료로 넘어갑니다.</p>
       <div class="segmented">
-        <button data-action="add-alt-zone">대체배송 추가</button>
+        <button data-action="add-alt-zone">대체배송 계속 추가</button>
         <button data-action="close-day">추가 없이 종료</button>
       </div>
       <div class="form-grid extra-zone-form">

@@ -15,6 +15,7 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - `SEASON2_SAFETY_PLAN.md`, `season2/README.md`는 잘못 수정됐다가 복구 완료된 상태다.
 - 현재 기준 배포 버전은 **v25**이다.
 - live `sw.js`에서 `delivery-master-install-v25` 반영 여부를 먼저 확인한다.
+- v26 `repeat-alt-zones`는 로컬 수정/검수 대상이며, 사용자 업무 종료 전 푸시/배포하지 않는다.
 
 ## 0-1. 핫픽스 채널 운영 목적
 
@@ -36,32 +37,34 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 
 ## 0-2. 최근 핫픽스 업데이트: 최신 5개만 유지
 
-1. v25 `cache-refresh`
+1. v26 `repeat-alt-zones` (로컬 대기, 미배포)
+   - 첫 구역이 대체배송이고 하루 안에 대체배송을 여러 번 뛰는 케이스 대응.
+   - 다음 기본 구역 시작 전 `대체배송 계속 추가`를 현장 주동선으로 노출.
+   - 추가한 대체배송은 현재 다음 구역 앞에 끼워 넣고 바로 시작.
+   - 검수 추가: `대체배송 1 -> 대체배송 2 -> 대체배송 3 -> 미주`.
+   - 가혹 검수 추가: `대체배송/미주/힐스/대체배송/대체배송` 순서 조합 3개 통과.
+   - 사용자 업무 종료 전 푸시/배포 금지.
+2. v25 `cache-refresh`
    - 폰에서 v24 배포 후에도 상단 표시가 v23에 머무는 서비스워커 캐시 문제 대응.
    - 서비스워커 fetch를 캐시 우선에서 네트워크 우선 + 실패 시 캐시로 변경.
    - 앱/캐시: `0.2.24-cache-refresh`, `delivery-master-install-v25`.
    - 검수: `npm run check`, `npm run build`, dist/루트 게시 파일 해시 일치.
-2. v24 `alt-zone-priority`
+3. v24 `alt-zone-priority`
    - v23에서 `대체배송 먼저 추가`를 눌러도 미주 화면에 머물던 문제 수정.
    - 이미 생성된 진행 중 대체배송은 기본 구역보다 우선 표시.
    - 새 대체배송은 다음 미시작 구역 앞에 확실히 삽입.
    - 앱/캐시: `0.2.23-alt-zone-priority`, `delivery-master-install-v24`.
    - 검수: `npm run check`, `npm run build`, dist/루트 게시 파일 해시 일치.
-3. v23 `multiple-alt-zones`
+4. v23 `multiple-alt-zones`
    - 첫 구역을 대체배송으로 시작해 완료한 뒤에도 다음 기본 구역 시작 전 `대체배송 먼저 추가`를 눌러 추가 대체배송을 이어서 진행 가능.
    - 진행 중 추가한 대체배송은 현재 미시작 구역 앞에 삽입하고 즉시 시작한다.
    - 앱/캐시: `0.2.22-multiple-alt-zones`, `delivery-master-install-v23`.
    - 검수: `npm run check`, `npm run build`, dist/루트 게시 파일 해시 일치.
-4. v21 `risk-quantity-recovery`
+5. v21 `risk-quantity-recovery`
    - 과대 오스캔/위험 수량 입력은 `confirm` 한 번으로 저장하지 않음.
    - 위험 수량은 저장을 멈추고 `입력 다시 하기`, `누적 총합으로 계산`, `이 구역 실제 수량 저장`, `예외 저장` 복구 패널을 먼저 보여줌.
    - 예외 저장은 timeline payload에 `quantityOverride` 흔적을 남김.
    - 기록 정정 시간 입력은 날짜+시간이 아니라 시간 전용 입력으로 변경.
-5. v20 `zone-helper-dedup`
-   - 구역 위치에서 기록한 무료/유료 도우미는 구역 내부 동행/기여로 처리.
-   - 구역 도우미 수량을 입력해도 총 배송 수량과 효율 분자에 중복 합산하지 않음.
-   - 구역 위치에서는 도우미 수량 빈칸 저장 허용.
-   - 리포트는 `구역 동행 유료/무료 ... (총량 중복 제외)`로 표시.
 
 ## 1. 현재 실제 배포 앱 위치
 

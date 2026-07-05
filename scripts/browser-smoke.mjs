@@ -485,6 +485,65 @@ await click('[data-action="zone-end"][data-zone="hils"]');
 await wait(700);
 const afterRiskRecovered = await bodyText();
 
+await click('[data-action="set-tab"][data-tab="backup"]');
+await wait(300);
+await click('[data-action="reset-confirm"]');
+await wait(400);
+await click('[data-action="set-tab"][data-tab="work"]');
+await wait();
+await setValue("#expected-count", "120");
+await click('[data-action="depart"]');
+await wait();
+await click('[data-action="arrive"]');
+await wait();
+await click('[data-action="prepare-default-order"]');
+await wait();
+const firstAltZoneId = await evaluate(`(() => {
+  const row = [...document.querySelectorAll(".order-row")]
+    .find((item) => item.textContent.includes("대체배송"));
+  const button = row?.querySelector('[data-action="move-zone-up"]');
+  return button?.dataset.zone || "";
+})()`);
+if (firstAltZoneId) {
+  await click(`[data-action="move-zone-up"][data-zone="${firstAltZoneId}"]`);
+  await wait();
+  await click(`[data-action="move-zone-up"][data-zone="${firstAltZoneId}"]`);
+  await wait();
+  await click(`[data-action="zone-start"][data-zone="${firstAltZoneId}"]`);
+  await wait();
+  await click(`[data-action="delivery-start"][data-zone="${firstAltZoneId}"]`);
+  await wait();
+  await setValue("#extra-count", "11");
+  await click(`[data-action="zone-end"][data-zone="${firstAltZoneId}"]`);
+  await wait(700);
+}
+const afterFirstAltFirst = await bodyText();
+const repeatAltButtonShown = afterFirstAltFirst.includes("대체배송 계속 추가");
+await click('[data-action="add-alt-zone"]');
+await wait(700);
+const secondAltZoneId = await evaluate(`(() => {
+  const button = document.querySelector('[data-action="delivery-start"][data-zone^="alt-"], [data-action="zone-start"][data-zone^="alt-"]');
+  return button?.dataset.zone || "";
+})()`);
+if (secondAltZoneId) {
+  const alreadyStarted = await evaluate(`Boolean(document.querySelector('[data-action="delivery-start"][data-zone="${secondAltZoneId}"]'))`);
+  if (!alreadyStarted) {
+    await click(`[data-action="zone-start"][data-zone="${secondAltZoneId}"]`);
+    await wait();
+  }
+  await click(`[data-action="delivery-start"][data-zone="${secondAltZoneId}"]`);
+  await wait();
+  await setValue("#extra-count", "22");
+  await click(`[data-action="zone-end"][data-zone="${secondAltZoneId}"]`);
+  await wait(700);
+}
+const afterSecondAltFirst = await bodyText();
+await click('[data-action="add-alt-zone"]');
+await wait(700);
+const afterThirdAltInserted = await bodyText();
+
+await click('[data-action="set-tab"][data-tab="backup"]');
+await wait(300);
 await click('[data-action="reset-confirm"]');
 await wait(400);
 await click('[data-action="set-tab"][data-tab="work"]');
@@ -495,15 +554,6 @@ await wait();
 await click('[data-action="arrive"]');
 await wait();
 await click('[data-action="prepare-default-order"]');
-await wait();
-await click('[data-action="add-alt-zone-to-order"]');
-await wait();
-await setValue("#custom-zone-name", "상가 추가");
-await click('[data-action="add-custom-zone-to-order"]');
-await wait();
-await click('[data-action="move-zone-down"][data-zone="miju"]');
-await wait();
-await click('[data-action="move-zone-down"][data-zone="miju"]');
 await wait();
 await click('[data-action="move-zone-down"][data-zone="miju"]');
 await wait();
@@ -538,7 +588,7 @@ if (altZoneId) {
   await wait();
   await click(`[data-action="delivery-start"][data-zone="${altZoneId}"]`);
   await wait();
-  await setValue("#extra-count", "26");
+  await setValue("#extra-count", "53");
   await click(`[data-action="zone-end"][data-zone="${altZoneId}"]`);
   await wait(500);
 }
@@ -559,7 +609,7 @@ const activeCustomZoneId = await evaluate(`(() => {
 if (activeCustomZoneId) {
   customDeliveryClicked = await click(`[data-action="delivery-start"][data-zone="${activeCustomZoneId}"]`);
   await wait(700);
-  await setValue("#extra-count", "31");
+  await setValue("#extra-count", "84");
   await click(`[data-action="zone-end"][data-zone="${activeCustomZoneId}"]`);
   await wait(500);
 }
@@ -654,6 +704,8 @@ const afterHuge = await bodyText();
 const hugeConfirm = await evaluate("window.__lastConfirm || ''");
 
 await evaluate("window.confirm = () => true");
+await click('[data-action="set-tab"][data-tab="backup"]');
+await wait(300);
 await click('[data-action="reset-confirm"]');
 await wait(600);
 await click('[data-action="set-tab"][data-tab="work"]');
@@ -770,11 +822,19 @@ const result = {
     && !afterRiskPanel.includes("수량 237개"),
   riskyQuantityCanRecoverWithNormalInput: afterRiskRecovered.includes("힐스테이트")
     && afterRiskRecovered.includes("수량 13개"),
+  repeatAlternateAfterFirstAlternate: repeatAltButtonShown
+    && afterSecondAltFirst.includes("대체배송 2")
+    && (afterSecondAltFirst.includes("수량 11개") || afterSecondAltFirst.includes("수량 22개")),
+  repeatAlternateThirdInsert: afterThirdAltInserted.includes("대체배송 3")
+    && afterThirdAltInserted.includes("대체배송 3 입력")
+    && afterThirdAltInserted.includes("대체배송 3 진행 중"),
   missingQuantityBlocked: !afterMissing.includes("힐스테이트 | 완료"),
   directHilsFirstComplete: afterDirectHils.includes("힐스테이트") && afterDirectHils.includes("수량 13개"),
-  directAlternateComplete: afterDirectAlt.includes("대체배송") && afterDirectAlt.includes("수량 7개"),
+  directAlternateComplete: afterDirectAlt.includes("대체배송 또는 구역 추가")
+    && afterDirectAlt.includes("총 53개")
+    && afterDirectAlt.includes("완료 53개"),
   customDeliveryClicked,
-  directCustomComplete: afterDirectCustom.includes("상가 추가") && afterDirectCustom.includes("수량 5개"),
+  directCustomComplete: afterDirectCustom.includes("상가 추가") && afterDirectCustom.includes("수량 31개"),
   correctionAltToPaidHelper: afterAltToPaidHelper.includes("도우미 배송 유료으로 전환했습니다.")
     || (afterAltToPaidHelper.includes("도우미 배송 유료") && afterAltToPaidHelper.includes("7개")),
   correctionPaidToFreeHelper: afterPaidToFreeHelper.includes("도우미 배송 무료")

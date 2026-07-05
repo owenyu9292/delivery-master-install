@@ -2049,9 +2049,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.24-cache-refresh";
-var APP_UPDATED_LABEL = "2026-07-05 \uCE90\uC2DC \uAC31\uC2E0 \uBCF4\uAC15";
-var CACHE_VERSION = "v25";
+var APP_VERSION = "0.2.25-repeat-alt-zones";
+var APP_UPDATED_LABEL = "2026-07-05 \uB300\uCCB4\uBC30\uC1A1 \uBC18\uBCF5 \uCD94\uAC00";
+var CACHE_VERSION = "v26";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -3114,8 +3114,12 @@ function renderWorkOrderStep() {
 function renderZoneStartStep(zone) {
   const orderEditor = hasAnyZoneStarted() ? "" : renderZoneOrderEditor();
   const inProgressExtraButtons = shouldOfferExtraZoneBefore(zone) ? `
+      <div class="field-action-note">
+        <strong>\uB300\uCCB4\uBC30\uC1A1\uC744 \uB354 \uBA3C\uC800 \uD574\uC57C \uD558\uBA74 \uC5EC\uAE30\uC11C \uACC4\uC18D \uCD94\uAC00\uD569\uB2C8\uB2E4.</strong>
+        <span>\uCD94\uAC00\uD55C \uB300\uCCB4\uBC30\uC1A1\uC740 ${escapeHtml(zone.name)} \uC55E\uC5D0 \uB07C\uC6CC \uB123\uACE0 \uBC14\uB85C \uC2DC\uC791\uD569\uB2C8\uB2E4.</span>
+      </div>
       <div class="segmented">
-        <button class="secondary" data-action="add-alt-zone">\uB300\uCCB4\uBC30\uC1A1 \uBA3C\uC800 \uCD94\uAC00</button>
+        <button data-action="add-alt-zone">\uB300\uCCB4\uBC30\uC1A1 \uACC4\uC18D \uCD94\uAC00</button>
         <button class="secondary" data-action="add-custom-zone">\uCD94\uAC00\uAD6C\uC5ED \uBA3C\uC800 \uCD94\uAC00</button>
       </div>
       <label>\uCD94\uAC00\uAD6C\uC5ED \uC774\uB984<input id="custom-zone-name" type="text" maxlength="24" placeholder="\uC608: \uC0C1\uAC00 \uCD94\uAC00"></label>
@@ -3200,9 +3204,9 @@ function renderExtraZoneChoiceStep() {
     <section class="panel focus">
       <p class="step">5 / \uCD94\uAC00 \uAD6C\uC5ED</p>
       <h2>\uB300\uCCB4\uBC30\uC1A1 \uB610\uB294 \uAD6C\uC5ED \uCD94\uAC00</h2>
-      <p class="hint">\uD790\uC2A4 \uC774\uD6C4\uC5D0 \uC0DD\uAE34 \uB300\uCCB4\uBC30\uC1A1, \uC784\uC2DC \uAD6C\uC5ED, \uCD94\uAC00 \uBB3C\uB7C9\uC744 \uC5EC\uAE30\uC5D0 \uBD99\uC785\uB2C8\uB2E4. \uC5C6\uC73C\uBA74 \uBC14\uB85C \uC5C5\uBB34 \uC885\uB8CC\uB85C \uB118\uC5B4\uAC00\uBA74 \uB429\uB2C8\uB2E4.</p>
+      <p class="hint">\uC624\uB298 \uC911\uAC04\uC911\uAC04 \uC0DD\uAE34 \uB300\uCCB4\uBC30\uC1A1, \uC784\uC2DC \uAD6C\uC5ED, \uCD94\uAC00 \uBB3C\uB7C9\uC744 \uACC4\uC18D \uBD99\uC785\uB2C8\uB2E4. \uC5C6\uC73C\uBA74 \uC5C5\uBB34 \uC885\uB8CC\uB85C \uB118\uC5B4\uAC11\uB2C8\uB2E4.</p>
       <div class="segmented">
-        <button data-action="add-alt-zone">\uB300\uCCB4\uBC30\uC1A1 \uCD94\uAC00</button>
+        <button data-action="add-alt-zone">\uB300\uCCB4\uBC30\uC1A1 \uACC4\uC18D \uCD94\uAC00</button>
         <button data-action="close-day">\uCD94\uAC00 \uC5C6\uC774 \uC885\uB8CC</button>
       </div>
       <div class="form-grid extra-zone-form">
