@@ -2049,9 +2049,9 @@ function getBrowserIndexedDb() {
 }
 
 // src/app/version.ts
-var APP_VERSION = "0.2.22-multiple-alt-zones";
-var APP_UPDATED_LABEL = "2026-07-05 \uB300\uCCB4\uBC30\uC1A1 \uC5F0\uC18D \uCD94\uAC00";
-var CACHE_VERSION = "v23";
+var APP_VERSION = "0.2.23-alt-zone-priority";
+var APP_UPDATED_LABEL = "2026-07-05 \uB300\uCCB4\uBC30\uC1A1 \uC989\uC2DC \uC9C4\uC785";
+var CACHE_VERSION = "v24";
 var CACHE_NAME = `delivery-master-install-${CACHE_VERSION}`;
 var TOPBAR_VERSION_LABEL = CACHE_VERSION;
 var SETTINGS_VERSION_LABEL = `${APP_VERSION} \xB7 ${APP_UPDATED_LABEL} \xB7 cache ${CACHE_VERSION}`;
@@ -3873,8 +3873,11 @@ function addExtraZone(kind, requestedName) {
   if (!currentDay || getActiveExtraZone()) return;
   const id = createExtraZoneId(kind);
   const defaultName = kind === "alt" ? getNextAltZoneName() : requestedName?.trim() || "\uCD94\uAC00 \uAD6C\uC5ED";
-  ensureZone(id, defaultName, getExtraZoneInsertOrder());
-  normalizeZoneOrders();
+  const insertOrder = getExtraZoneInsertOrder();
+  currentDay.zones = currentDay.zones.map(
+    (zone) => zone.order >= insertOrder ? { ...zone, order: zone.order + 1 } : zone
+  );
+  ensureZone(id, defaultName, insertOrder);
   addZoneStart(id);
 }
 function setWorkOrder(orderValue) {
@@ -5099,6 +5102,8 @@ function getActiveExtraZone() {
 }
 function getCurrentWorkZone() {
   if (!currentDay) return void 0;
+  const activeExtra = getActiveExtraZone();
+  if (activeExtra) return activeExtra;
   return [...currentDay.zones].sort((a, b) => a.order - b.order).find((zone) => !hasZoneEnded(zone.id));
 }
 function shouldOfferExtraZoneBefore(zone) {

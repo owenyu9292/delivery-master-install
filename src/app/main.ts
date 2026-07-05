@@ -2167,8 +2167,11 @@ function addExtraZone(kind: "alt" | "custom", requestedName?: string): void {
   if (!currentDay || getActiveExtraZone()) return;
   const id = createExtraZoneId(kind);
   const defaultName = kind === "alt" ? getNextAltZoneName() : requestedName?.trim() || "추가 구역";
-  ensureZone(id, defaultName, getExtraZoneInsertOrder());
-  normalizeZoneOrders();
+  const insertOrder = getExtraZoneInsertOrder();
+  currentDay.zones = currentDay.zones.map((zone) =>
+    zone.order >= insertOrder ? { ...zone, order: zone.order + 1 } : zone,
+  );
+  ensureZone(id, defaultName, insertOrder);
   addZoneStart(id);
 }
 
@@ -3559,6 +3562,8 @@ function getActiveExtraZone(): ZoneRecord | undefined {
 
 function getCurrentWorkZone(): ZoneRecord | undefined {
   if (!currentDay) return undefined;
+  const activeExtra = getActiveExtraZone();
+  if (activeExtra) return activeExtra;
   return [...currentDay.zones]
     .sort((a, b) => a.order - b.order)
     .find((zone) => !hasZoneEnded(zone.id));

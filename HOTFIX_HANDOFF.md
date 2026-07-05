@@ -13,8 +13,8 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 - Season2 PWA는 보관/원본 백업 앱이며, 현재 핫픽스 대상이 아니다.
 - `C:\Codex55Workspace\delivery-master\season2`는 건드리지 않는다.
 - `SEASON2_SAFETY_PLAN.md`, `season2/README.md`는 잘못 수정됐다가 복구 완료된 상태다.
-- 현재 기준 배포 버전은 **v23**이다.
-- live `sw.js`에서 `delivery-master-install-v23` 반영 여부를 먼저 확인한다.
+- 현재 기준 배포 버전은 **v24**이다.
+- live `sw.js`에서 `delivery-master-install-v24` 반영 여부를 먼저 확인한다.
 
 ## 0-1. 핫픽스 채널 운영 목적
 
@@ -36,33 +36,33 @@ C:\Codex55Workspace\delivery-master\delivery-master-install-deploy\HOTFIX_HANDOF
 
 ## 0-2. 최근 핫픽스 업데이트: 최신 5개만 유지
 
-1. v23 `multiple-alt-zones`
+1. v24 `alt-zone-priority`
+   - v23에서 `대체배송 먼저 추가`를 눌러도 미주 화면에 머물던 문제 수정.
+   - 이미 생성된 진행 중 대체배송은 기본 구역보다 우선 표시.
+   - 새 대체배송은 다음 미시작 구역 앞에 확실히 삽입.
+   - 앱/캐시: `0.2.23-alt-zone-priority`, `delivery-master-install-v24`.
+   - 검수: `npm run check`, `npm run build`, dist/루트 게시 파일 해시 일치.
+2. v23 `multiple-alt-zones`
    - 첫 구역을 대체배송으로 시작해 완료한 뒤에도 다음 기본 구역 시작 전 `대체배송 먼저 추가`를 눌러 추가 대체배송을 이어서 진행 가능.
    - 진행 중 추가한 대체배송은 현재 미시작 구역 앞에 삽입하고 즉시 시작한다.
    - 앱/캐시: `0.2.22-multiple-alt-zones`, `delivery-master-install-v23`.
    - 검수: `npm run check`, `npm run build`, dist/루트 게시 파일 해시 일치.
-2. v21 `risk-quantity-recovery`
+3. v21 `risk-quantity-recovery`
    - 과대 오스캔/위험 수량 입력은 `confirm` 한 번으로 저장하지 않음.
    - 위험 수량은 저장을 멈추고 `입력 다시 하기`, `누적 총합으로 계산`, `이 구역 실제 수량 저장`, `예외 저장` 복구 패널을 먼저 보여줌.
    - 예외 저장은 timeline payload에 `quantityOverride` 흔적을 남김.
    - 기록 정정 시간 입력은 날짜+시간이 아니라 시간 전용 입력으로 변경.
-3. v20 `zone-helper-dedup`
+4. v20 `zone-helper-dedup`
    - 구역 위치에서 기록한 무료/유료 도우미는 구역 내부 동행/기여로 처리.
    - 구역 도우미 수량을 입력해도 총 배송 수량과 효율 분자에 중복 합산하지 않음.
    - 구역 위치에서는 도우미 수량 빈칸 저장 허용.
    - 리포트는 `구역 동행 유료/무료 ... (총량 중복 제외)`로 표시.
-4. v19 `phone-backup-restore`
+5. v19 `phone-backup-restore`
    - 백업설정에 `개발앱 백업 복구` 추가.
    - 정상화된 개발앱 백업 JSON을 기존 날짜에 덮어쓸 수 있음.
    - 기존 날짜가 있으면 `확인=덮어쓰기`, `취소=복사본`.
    - 복구 전후 전체 백업 파일 자동 내보내기.
    - `현장앱 백업 가져오기`는 기존 날짜 보호/복사본 정책 유지.
-5. v18 `cumulative-correction-helper`
-   - 구역 수량 계산 기준을 배송지 이름이 아니라 작업 순서 기준으로 보강.
-   - 1구역은 실제 수량, 2구역 이후 누적 총합 입력은 앞 구역 합계를 빼서 저장.
-   - 기록 정정 화면에 `이 구역 실제 수량 / 누적 총합에서 이전 구역 자동 차감` 선택 추가.
-   - 기록 정정 화면에 `누락 도우미 배송 추가` 추가. 사라졌거나 빠진 무료/유료 도우미 배송을 다시 입력 가능.
-   - 브라우저 검수 411x762 / DPR 2.63에서 `cumulativeRouteTotalsByOrder`, `pastMissingHelperAdded` 통과.
 
 ## 1. 현재 실제 배포 앱 위치
 
