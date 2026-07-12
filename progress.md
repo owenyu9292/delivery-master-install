@@ -1,5 +1,61 @@
 # 2026-06-07 source-of-truth 이관 정리
 
+
+- 2026-07-11 기록자: 일반 작업창 / 채널: main - Android 디버그 APK 생성 완료
+  - 사용자 승인: Android Studio·SDK 설치, package ID 확정, `android/` 생성, SQLite 연결, 디버그 APK 생성까지 전체 선승인.
+  - package ID/app: `io.github.owenyu9292.deliverymaster` / `배송마스터`.
+  - 도구: Android Studio Quail 1 Patch 2 사용자 전용 설치, JDK 21, SDK API 36, Build Tools 36/35, Platform Tools 구성 완료.
+  - 프로젝트: Capacitor 8 `android/` 생성, minSdk 24, compile/target SDK 36.
+  - 플러그인: SQLite, App, Clipboard, Filesystem, Share 연결 확인.
+  - 검사: Capacitor doctor, `npm run check` 50/50, Android unit test, lintDebug 통과.
+  - APK: `android/app/build/outputs/apk/debug/app-debug.apk`, 24.18 MiB.
+  - SHA-256: `2A5F5A9A4DB60C5E0D5E1B6F483E70B69D4F2D0416EE110BB0FE10B19013C908`.
+  - 서명: Android Debug RSA 2048, APK Signature Scheme v2 검증 통과.
+  - 보호 결과: 기존 PWA/season2, main, GitHub Pages 게시 파일은 수정·푸시·배포하지 않았다.
+  - 남은 게이트: Galaxy Fold 실기기 설치, SQLite 저장/재실행/백업 가져오기 검수, release 서명키 확정.
+
+- 2026-07-10 기록자: 일반 작업창 / 채널: main - 설치판 내부 저장/런타임 기반 구현 완료
+  - 상태: Android 프로젝트 생성 전 로컬 소스 구현과 검수 완료.
+  - 의존성: Capacitor 8.4.1, Android, App, Clipboard, Filesystem, Share, community SQLite를 설치했다.
+  - 저장소: 날짜 PK와 `DayRecord` JSON 본문을 저장하는 `SqliteDayStore`와 Capacitor 드라이버를 추가했다.
+  - 런타임: 웹/PWA는 IndexedDB+서비스워커, 네이티브 설치판만 SQLite+네이티브 공유를 선택한다.
+  - 재시작 안전: 네이티브 SQLite 연결이 이미 있으면 회수하고, 닫혀 있을 때만 다시 연다.
+  - 검사: 도메인 50/50, 플랫폼, SQLite 저장/백업/가져오기, 런타임 선택, 타입 검사와 빌드 통과.
+  - 브라우저: 411x762 / DPR 2.63 전체 스모크와 대체배송 복합 순서 4종 모두 통과.
+  - 검수 보정: 고정 09:41 입력으로 오전 실행 시 오검출하던 `logDirectEditSaved` 검사를 현재 기록 유지 방식으로 안정화했다.
+  - 보호 결과: 기존 PWA/season2, main, GitHub Pages 배포본은 수정·커밋·푸시·배포하지 않았다.
+  - 대기: package ID, Android Studio/SDK, Android 프로젝트 생성, 서명키, 실기기 빌드는 별도 승인 대상이다.
+
+- 2026-07-10 기록자: 일반 작업창 / 채널: main
+  - 사용자 승인: 기존 PWA 배포를 유지한 채 Capacitor Android/SQLite 설치판 작업을 시작한다.
+  - 보호 범위: 현장앱 v1, season2, GitHub Pages 배포본, main 브랜치는 수정/배포하지 않는다.
+  - 현재 단계: 로컬 Android/Java/Node 환경, 공식 Capacitor 호환성, SQLite/파일 플러그인 후보를 확인한다.
+  - 영구 결정 대기: package ID와 서명키 생성/백업 위치는 생성 직전 사용자에게 추천안을 보고하고 확정한다.
+  - 구현 브랜치: `codex/android-install-foundation`.
+  - 완료 게이트: Android 빌드, 내부 저장 계약, PWA 백업 이전, Fold 실기기 업데이트/복구 검수.
+
+- 2026-07-10 기록자: 일반 작업창 / 채널: main
+  - 사용자 승인: 5.6 Luna 작업자를 사용해 설치판 전환용 최소 플랫폼 경계를 분리한다.
+  - Luna 담당: 신규 플랫폼 계약과 브라우저 구현 파일. 기존 업무 파일은 수정하지 않는다.
+  - 코기 담당: 저장소 조립, `main.ts` 연결, 테스트 격리, 회귀 검수와 최종 판단.
+  - 변경 금지: 배송 계산, 수량 수식, 로그, 리포트, 통계, 현장 UI 동작.
+  - 검수: 50개 도메인 검사, 빌드, 411x762 전체 스모크, 대체배송 스트레스 단독 실행.
+
+  - 완료: `PlatformServices`, `BrowserPlatformServices`, `AppRuntime` 경계를 추가하고 `main.ts`의 직접 브라우저/IndexedDB 호출을 연결했다.
+  - 플랫폼 검사: service worker, clipboard, JSON 내보내기 정리, 파일 선택, hard refresh 통과.
+  - 회귀 검사: `npm run check` 50/50, `npm run build`, 411x762 전체 스모크 통과.
+  - 스트레스 검사: 대체-미주-대체-힐스-대체 등 4개 복합 순서 모두 통과.
+  - 검수 격리: 같은 origin에서 스모크/스트레스를 병렬 실행하면 상태가 충돌하므로 순차 러너를 추가했다.
+  - 미반영: Capacitor, Android SQLite, package ID, 서명키, APK는 아직 구현하지 않았다.
+  - 배포 상태: PWA 소스 구조만 변경했으며 GitHub Pages 푸시/배포는 하지 않았다.
+
+
+- 2026-07-10 기록자: 일반 작업창 / 채널: main
+  - 사용자 승인: 개발앱 PWA를 원본으로 승격하고 Android 설치판 구조와 데이터 이전 규칙을 문서화한다.
+  - 범위: 기술 방향, 공통 원본, 내부 저장, 최초 이전, 백업/복구, 업데이트/서명, 완료 게이트.
+  - 제외: Capacitor 설치, Android 프로젝트, package ID/서명키, APK 빌드/배포.
+  - 기준 검사: 작업 전 `npm run check` 50/50 및 `npm run build` 통과.
+
 - 2026-07-05 기록자: 핫픽스 채널 / 채널: hotfix
   - 현장 증상: v23에서 `대체배송 먼저 추가` 버튼을 눌러도 화면이 미주 시작에 머물렀다.
   - 원인: 새 대체배송을 미주와 같은 order로 넣은 뒤 정렬하면서 미주가 계속 먼저 잡혔다.

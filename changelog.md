@@ -1,5 +1,53 @@
 # 2026-06-07
 
+
+- 2026-07-11 Android 디버그 APK 기반 생성
+  - 기록자: 일반 작업창 / 채널: main
+  - package ID `io.github.owenyu9292.deliverymaster`, 앱 이름 `배송마스터`를 확정했다.
+  - Capacitor Android 프로젝트를 생성하고 API 36/minSdk 24로 구성했다.
+  - Android Studio Quail 1 Patch 2, JDK 21, SDK/Build Tools/Platform Tools를 사용자 전용 위치에 설치했다.
+  - SQLite/App/Clipboard/Filesystem/Share 5개 플러그인 동기화를 확인했다.
+  - `npm run check`, Capacitor doctor, `testDebugUnitTest`, `lintDebug`, `assembleDebug`를 통과했다.
+  - APK 패키지 ID, targetSdk 36, debug v2 서명, `libsqlcipher.so` 4개 ABI 포함을 검증했다.
+  - 결과 APK: `android/app/build/outputs/apk/debug/app-debug.apk`, 24.18 MiB.
+  - SHA-256: `2A5F5A9A4DB60C5E0D5E1B6F483E70B69D4F2D0416EE110BB0FE10B19013C908`.
+  - 기존 PWA/season2, main, GitHub Pages 게시 파일은 수정·푸시·배포하지 않았다.
+  - 실기기 설치/SQLite 유지/백업 복구와 release 서명은 다음 게이트로 남겼다.
+
+
+- 2026-07-10 설치판 SQLite/네이티브 런타임 기반 구현
+  - 기록자: 일반 작업창 / 채널: main
+  - Capacitor 8 계열과 Android/App/Clipboard/Filesystem/Share/SQLite 의존성을 추가했다.
+  - `SqliteDayStore`는 날짜별 `DayRecord` JSON만 upsert하고 리포트/통계 파생값을 중복 저장하지 않는다.
+  - `CapacitorPlatformServices`는 네이티브 클립보드, JSON 임시파일 공유, JSON 선택, 앱 새로고침을 담당한다.
+  - `createAppRuntime`은 웹/PWA를 IndexedDB로 유지하고 네이티브에서만 SQLite를 선택한다.
+  - 앱 새로고침 후 남아 있는 네이티브 SQLite 연결을 회수하고 열린 상태를 확인해 중복 연결 충돌을 막았다.
+  - `npm run check`: 도메인 50/50, 플랫폼, SQLite, 런타임 선택, 타입 검사 모두 통과. `npm run build` 통과.
+  - 411x762 / DPR 2.63 전체 스모크 및 대체배송 복합 순서 4종 통과.
+  - 시간대 고정값으로 생기던 브라우저 검수 오검출을 제거했다.
+  - 기존 PWA 게시 파일 커밋/푸시/배포와 Android 프로젝트 생성은 하지 않았다.
+
+- 2026-07-10 설치판 최소 플랫폼 경계 분리
+  - 기록자: 일반 작업창 / 채널: main
+  - Luna 5.6이 신규 플랫폼 계약, 브라우저 구현, 런타임 조립, 플랫폼 테스트를 작성하고 코기가 검토·연결·검수했다.
+  - `main.ts`에서 IndexedDB 생성, service worker, clipboard, JSON 내보내기/불러오기, hard refresh 직접 구현을 제거했다.
+  - `PlatformServices`와 `createBrowserRuntime`을 통해 기존 PWA 동작을 유지했다.
+  - 계산, 수량, 로그, 리포트, 통계, 현장 UI 로직은 수정하지 않았다.
+  - `npm run check`: 도메인 50/50 + 플랫폼 계약 검사 통과.
+  - `npm run build`: 통과.
+  - 411x762 / DPR 2.63 전체 브라우저 스모크: 전 항목 통과.
+  - 대체배송 복합 순서 스트레스 4종: 모두 통과.
+  - 병렬 브라우저 검수의 동일 origin 충돌을 확인해 공식 검수는 순차 실행하도록 고정했다.
+  - GitHub Pages 푸시/배포는 하지 않았다.
+
+- 2026-07-10 설치판 기반 설계 문서화
+  - 기록자: 일반 작업창 / 채널: main
+  - `INSTALL_ARCHITECTURE.md`를 추가해 Capacitor 방향, 공통 원본, 내부 저장, 최초 이전, 백업/복구, 업데이트/서명, 완료 게이트를 고정했다.
+  - `DECISIONS.md`, `DATA_MIGRATION.md`, `MODULE_PLAN.md`, `instruction.md`, `README.md`를 현재 상태에 맞췄다.
+  - `phoneInstall` 도메인 계층 구현과 실제 Android 패키징 미구현을 구분했다.
+  - 코드와 배포 산출물은 수정하지 않았다.
+  - 기준 검사: 작업 전 `npm run check` 50/50 통과, `npm run build` 통과.
+
 - 2026-07-05 v24 `alt-zone-priority`
   - 기록자: 핫픽스 채널 / 채널: hotfix
   - `대체배송 먼저 추가` 후 미주 화면에 머물던 문제를 수정했다.

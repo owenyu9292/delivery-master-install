@@ -758,7 +758,6 @@ const logEditDigitalOnly = await evaluate(`(() => {
   const panel = document.querySelector(".timeline-inline-editor");
   return Boolean(panel) && !panel.querySelector('input[type="time"]') && Boolean(panel.querySelector('[id$="-time-hour"]')) && Boolean(panel.querySelector('[id$="-time-minute"]'));
 })()`);
-await setActiveLogDigitalTime("09", "41");
 await setActiveLogInputBySuffix("-total", "553");
 await click('[data-action="save-log-edit"]');
 await wait(700);

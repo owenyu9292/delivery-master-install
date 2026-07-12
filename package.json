@@ -5,14 +5,29 @@
   "type": "module",
   "scripts": {
     "test": "tsx scripts/run-domain-tests.ts",
-    "check": "npm run typecheck && npm run test",
+    "test:platform": "tsx scripts/run-platform-tests.ts",
+    "test:sqlite": "tsx scripts/run-sqlite-store-tests.ts",
+    "test:runtime": "tsx scripts/run-runtime-selection-tests.ts",
+    "check": "npm run typecheck && npm run test && npm run test:platform && npm run test:sqlite && npm run test:runtime",
+    "check:browser": "node scripts/run-browser-checks.mjs",
     "check:codex": "node scripts/codex-precommit-check.mjs",
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build-app.mjs",
     "serve": "node scripts/serve-dist.mjs"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.1",
+    "esbuild": "^0.28.1",
     "tsx": "^4.22.1",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@capacitor-community/sqlite": "^8.1.0",
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/clipboard": "^8.0.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/share": "^8.0.1"
   }
 }

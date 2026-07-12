@@ -13,9 +13,9 @@ import {
   createBackupCopyDay,
   normalizePhoneInstallBackup,
 } from "../storage/backupImportExport";
-import { IndexedDbDayStore } from "../storage/indexedDbAdapter";
 import type { ZoneQuantityComparison } from "../ui/uiScreens";
 import { APP_VERSION, SETTINGS_VERSION_LABEL, TOPBAR_VERSION_LABEL } from "./version";
+import { createAppRuntime } from "./appRuntime";
 
 const BASE_ZONE_IDS = ["miju", "hils"] as const;
 const MAX_REASONABLE_EXPECTED = 1200;
@@ -31,11 +31,8 @@ const EVENT_TYPES = [
   "대기",
   "기타",
 ] as const;
-const store = new IndexedDbDayStore({
-  dbName: "delivery-master-install",
-  storeName: "dayRecords",
-  appVersion: APP_VERSION,
-});
+const runtime = createAppRuntime(APP_VERSION);
+const { store, platform } = runtime;
 
 let currentDay: DayRecord | null = null;
 let historyDays: DayRecord[] = [];
@@ -95,7 +92,7 @@ const root: HTMLDivElement = appRoot;
 void boot();
 
 async function boot(): Promise<void> {
-  await registerServiceWorker();
+  await platform.initialize();
   await loadToday();
   render();
 }
@@ -1880,7 +1877,8 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   }
 
   if (action === "refresh") {
-    await hardRefreshApp();
+    toast("앱 캐시를 비우고 새 버전을 불러옵니다.");
+    await platform.hardRefresh();
     return;
   }
   if (action === "load-today") {
@@ -1897,13 +1895,13 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   }
   if (action === "copy-report") {
     const report = buildDailyReport(currentDay, calculateDay(currentDay), { title: "Delivery Master Install Report" });
-    await navigator.clipboard.writeText(report.text);
+    await platform.copyText(report.text);
     toast("리포트를 복사했습니다.");
     return;
   }
   if (action === "snapshot") {
     const backup = await store.createBackup({ kind: "all" });
-    downloadJsonFile(backup, buildBackupFilename("manual"));
+    await platform.exportJson(backup, buildBackupFilename("manual"));
     toast("백업 파일 내보내기를 시작했습니다.");
     return;
   }
@@ -3209,11 +3207,11 @@ async function refreshHistory(): Promise<void> {
 }
 
 async function importFieldBackupFile(): Promise<void> {
-  const file = await pickJsonFile();
+  const file = await platform.pickTextFile();
   if (!file) return;
 
   try {
-    const data = await readJsonFile(file);
+    const data = readJsonText(file.text);
     const migration = buildFieldAppMigrationBackup(data, { appVersion: APP_VERSION });
     const recognizedDays = migration.backup.days.length;
     if (recognizedDays === 0) {
@@ -3253,14 +3251,14 @@ async function importFieldBackupFile(): Promise<void> {
     }
 
     const beforeBackup = await store.createBackup({ kind: "all" });
-    downloadJsonFile(beforeBackup, buildBackupFilename("before-import"));
+    await platform.exportJson(beforeBackup, buildBackupFilename("before-import"));
 
     const result = await applyFieldImportWithAutoCorrection(migration.backup.days);
     await refreshHistory();
     currentDay = await pickDayToDisplayAfterImport(result.importedDates) ?? currentDay;
 
     const afterBackup = await store.createBackup({ kind: "all" });
-    downloadJsonFile(afterBackup, buildBackupFilename("after-import"));
+    await platform.exportJson(afterBackup, buildBackupFilename("after-import"));
 
     lastImportFeedback = {
       fileName: file.name,
@@ -3296,11 +3294,11 @@ async function importFieldBackupFile(): Promise<void> {
 }
 
 async function importPhoneInstallBackupFile(): Promise<void> {
-  const file = await pickJsonFile();
+  const file = await platform.pickTextFile();
   if (!file) return;
 
   try {
-    const data = await readJsonFile(file);
+    const data = readJsonText(file.text);
     assertPhoneInstallBackup(data);
     const backup = normalizePhoneInstallBackup(data);
     const recognizedDays = backup.days.length;
@@ -3354,14 +3352,14 @@ async function importPhoneInstallBackupFile(): Promise<void> {
     const mode = overwrite ? "overwrite" : "copy";
 
     const beforeBackup = await store.createBackup({ kind: "all" });
-    downloadJsonFile(beforeBackup, buildBackupFilename(`before-phone-${mode}`));
+    await platform.exportJson(beforeBackup, buildBackupFilename(`before-phone-${mode}`));
 
     const result = await store.importBackup(backup, { mode });
     await refreshHistory();
     currentDay = await pickDayToDisplayAfterImport(result.imported.map((item) => item.date)) ?? currentDay;
 
     const afterBackup = await store.createBackup({ kind: "all" });
-    downloadJsonFile(afterBackup, buildBackupFilename(`after-phone-${mode}`));
+    await platform.exportJson(afterBackup, buildBackupFilename(`after-phone-${mode}`));
 
     lastImportFeedback = {
       title: "개발앱 백업 복구 결과",
@@ -3463,21 +3461,10 @@ async function loadCorrectionDate(): Promise<void> {
   toast(`${date} 기록을 불러왔습니다.`);
 }
 
-function downloadJsonFile(value: unknown, filename: string): void {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
 
 async function downloadFullBackup(filename: string): Promise<void> {
   const backup = await store.createBackup({ kind: "all" });
-  downloadJsonFile(backup, filename);
+  await platform.exportJson(backup, filename);
 }
 
 async function downloadPreparedSnapshot(
@@ -3485,7 +3472,7 @@ async function downloadPreparedSnapshot(
   scope: Parameters<typeof preparePhoneInstallUpdate>[1] = { kind: "all" },
 ): Promise<void> {
   const plan = await preparePhoneInstallUpdate(store, scope);
-  downloadJsonFile(plan.snapshot, buildBackupFilename(label));
+  await platform.exportJson(plan.snapshot, buildBackupFilename(label));
 }
 
 function buildBackupFilename(label: string): string {
@@ -3493,24 +3480,7 @@ function buildBackupFilename(label: string): string {
   return PHONE_INSTALL_BACKUP_FILENAME.replace(/\.json$/i, `_${label}_${stamp}.json`);
 }
 
-function pickJsonFile(): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "application/json,.json";
-    input.style.display = "none";
-    document.body.appendChild(input);
-    input.addEventListener("change", () => {
-      const file = input.files?.[0] ?? null;
-      input.remove();
-      resolve(file);
-    }, { once: true });
-    input.click();
-  });
-}
-
-async function readJsonFile(file: File): Promise<unknown> {
-  const text = await file.text();
+function readJsonText(text: string): unknown {
   try {
     return JSON.parse(text) as unknown;
   } catch {
@@ -4275,34 +4245,5 @@ function toast(message: string): void {
   el.textContent = message;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 1800);
-}
-
-async function registerServiceWorker(): Promise<void> {
-  if (!("serviceWorker" in navigator)) return;
-  try {
-    const registration = await navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" });
-    await registration.update();
-  } catch (error) {
-    console.warn("Service worker registration failed; app boot continues.", error);
-  }
-}
-
-async function hardRefreshApp(): Promise<void> {
-  toast("앱 캐시를 비우고 새 버전을 불러옵니다.");
-  try {
-    if ("serviceWorker" in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(registrations.map((registration) => registration.unregister()));
-    }
-    if ("caches" in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((key) => caches.delete(key)));
-    }
-  } catch (error) {
-    console.warn("Hard refresh cache cleanup failed; forcing reload anyway.", error);
-  }
-  const url = new URL(window.location.href);
-  url.searchParams.set("app-refresh", String(Date.now()));
-  window.location.replace(url.toString());
 }
 

@@ -61,3 +61,11 @@ It may contain older PWA files:
 Do not copy `current-source/` over the publish root.
 
 The old Season2 PWA folder is not part of this install app source and must not be touched unless the user explicitly requests it.
+
+## Android Install Direction
+
+- The current development PWA is the shared source-of-truth.
+- Android installation builds derive from the same domain, UI, and app source.
+- Capacitor 8 and a SQLite-backed `DayStore` are implemented behind runtime platform selection.
+- PWA IndexedDB data moves through one verified full-backup import and is not assumed to transfer automatically.
+- The Android project and debug APK are generated with package ID `io.github.owenyu9292.deliverymaster`; release signing and device validation remain pending.

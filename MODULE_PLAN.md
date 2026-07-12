@@ -26,6 +26,9 @@ Implemented:
 - dayStore
 - memoryDayStore
 - indexedDbAdapter
+- platformServices
+- browserPlatform
+- appRuntime
 
 ## Boundary summary
 
@@ -158,6 +161,8 @@ Responsibilities:
 - expose recovery UI for restoring interrupted work
 - carry field-learned cleanup/sorting correction flow into the installable app
 - support base miju/hils flow plus appended 대체배송 and named custom zones
+- share common domain/UI source with the PWA baseline
+- route Android persistence, file export, and lifecycle through platform adapters
 
 Safety rules:
 
@@ -178,7 +183,8 @@ Safety rules:
 
 ## Rollout status
 
-- phoneInstall implemented
+- phoneInstall domain safety/dashboard layer implemented
+- native SQLite storage/runtime adapter implemented; Android project, signing, and update channel still pending
 - static app shell implemented
 - field ordered app flow implemented
 - field app backup import button implemented in the app shell
