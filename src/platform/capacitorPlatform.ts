@@ -1,3 +1,4 @@
+import { App } from "@capacitor/app";
 import { Clipboard } from "@capacitor/clipboard";
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -5,11 +6,23 @@ import type { PickedTextFile, PlatformServices } from "./platformServices";
 
 export class CapacitorPlatformServices implements PlatformServices {
   async initialize(): Promise<void> {
-    // Native builds do not register the PWA service worker.
+    await App.addListener("backButton", () => {
+      void App.exitApp();
+    });
   }
 
   async copyText(text: string): Promise<void> {
     await Clipboard.write({ string: text });
+  }
+
+  async saveJsonSnapshot(value: unknown, filename: string): Promise<void> {
+    await Filesystem.writeFile({
+      path: `backups/${filename}`,
+      data: JSON.stringify(value, null, 2),
+      directory: Directory.Data,
+      encoding: Encoding.UTF8,
+      recursive: true,
+    });
   }
 
   async exportJson(value: unknown, filename: string): Promise<void> {

@@ -24,6 +24,10 @@ export class BrowserPlatformServices implements PlatformServices {
     await navigator.clipboard.writeText(text);
   }
 
+  async saveJsonSnapshot(value: unknown, filename: string): Promise<void> {
+    await this.exportJson(value, filename);
+  }
+
   async exportJson(value: unknown, filename: string): Promise<void> {
     if (typeof document === "undefined" || typeof URL === "undefined") {
       throw new Error("File export is not available in this runtime.");

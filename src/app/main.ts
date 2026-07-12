@@ -1,4 +1,4 @@
-﻿import { applyMissingCleanupCorrection, hasMissingCleanupFinish } from "../domain/cleanupCorrection";
+import { applyMissingCleanupCorrection, hasMissingCleanupFinish } from "../domain/cleanupCorrection";
 import { applyCompletedZoneEdit } from "../domain/zoneEdit";
 import { createEvent, updateEvent } from "../domain/eventTimeline";
 import { calculateDay } from "../domain/deliveryCalc";
@@ -118,9 +118,7 @@ function render(): void {
   root.innerHTML = `
     <main class="shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">phoneInstall alpha · ${TOPBAR_VERSION_LABEL}</p>
-          <h1>배송마스터</h1>
+        <div>          <h1>배송마스터 <span class="app-version">${TOPBAR_VERSION_LABEL}</span></h1>
         </div>
         <button class="icon-btn" data-action="refresh" title="새로고침">새로고침</button>
       </header>
@@ -3230,9 +3228,10 @@ async function importFieldBackupFile(): Promise<void> {
       return;
     }
 
-    const dates = migration.backup.days.map((day) => day.date).join(", ");
+    const firstDate = migration.backup.days[0]?.date ?? "-";
+    const lastDate = migration.backup.days.at(-1)?.date ?? "-";
     const ok = confirm(
-      `현장앱 백업에서 ${recognizedDays}일치를 찾았습니다.\n\n${dates}\n\n가져오기 전에 전체 백업 파일을 내보냅니다.\n빈 오늘 기록은 가져온 기록으로 자동 보정하고, 실제 기록이 있는 날짜는 복사본으로 보호합니다.`,
+      `현장앱 백업에서 ${recognizedDays}일치를 찾았습니다.\n기간: ${firstDate} ~ ${lastDate}\n\n가져오기 전후 안전 스냅샷은 앱 내부에 자동 보관합니다.\n빈 오늘 기록은 가져온 기록으로 자동 보정하고, 실제 기록이 있는 날짜는 복사본으로 보호합니다.`,
     );
     if (!ok) {
       lastImportFeedback = {
@@ -3251,14 +3250,13 @@ async function importFieldBackupFile(): Promise<void> {
     }
 
     const beforeBackup = await store.createBackup({ kind: "all" });
-    await platform.exportJson(beforeBackup, buildBackupFilename("before-import"));
+    await platform.saveJsonSnapshot(beforeBackup, buildBackupFilename("before-import"));
 
     const result = await applyFieldImportWithAutoCorrection(migration.backup.days);
-    await refreshHistory();
-    currentDay = await pickDayToDisplayAfterImport(result.importedDates) ?? currentDay;
+    await loadToday();
 
     const afterBackup = await store.createBackup({ kind: "all" });
-    await platform.exportJson(afterBackup, buildBackupFilename("after-import"));
+    await platform.saveJsonSnapshot(afterBackup, buildBackupFilename("after-import"));
 
     lastImportFeedback = {
       fileName: file.name,
@@ -3323,9 +3321,10 @@ async function importPhoneInstallBackupFile(): Promise<void> {
     for (const day of backup.days) {
       if (await store.getDay(day.date)) existingDates.push(day.date);
     }
-    const dates = backup.days.map((day) => day.date).join(", ");
+    const firstDate = backup.days[0]?.date ?? "-";
+    const lastDate = backup.days.at(-1)?.date ?? "-";
     const ok = confirm(
-      `개발앱 백업에서 ${recognizedDays}일치를 찾았습니다.\n\n${dates}\n\n복구 전에 전체 백업 파일을 내보냅니다.`,
+      `개발앱 백업에서 ${recognizedDays}일치를 찾았습니다.\n기간: ${firstDate} ~ ${lastDate}\n\n복구 전후 안전 스냅샷은 앱 내부에 자동 보관합니다.`,
     );
     if (!ok) {
       lastImportFeedback = {
@@ -3352,14 +3351,13 @@ async function importPhoneInstallBackupFile(): Promise<void> {
     const mode = overwrite ? "overwrite" : "copy";
 
     const beforeBackup = await store.createBackup({ kind: "all" });
-    await platform.exportJson(beforeBackup, buildBackupFilename(`before-phone-${mode}`));
+    await platform.saveJsonSnapshot(beforeBackup, buildBackupFilename(`before-phone-${mode}`));
 
     const result = await store.importBackup(backup, { mode });
-    await refreshHistory();
-    currentDay = await pickDayToDisplayAfterImport(result.imported.map((item) => item.date)) ?? currentDay;
+    await loadToday();
 
     const afterBackup = await store.createBackup({ kind: "all" });
-    await platform.exportJson(afterBackup, buildBackupFilename(`after-phone-${mode}`));
+    await platform.saveJsonSnapshot(afterBackup, buildBackupFilename(`after-phone-${mode}`));
 
     lastImportFeedback = {
       title: "개발앱 백업 복구 결과",
@@ -3436,13 +3434,6 @@ function isAutoReplaceableEmptyDay(day: DayRecord): boolean {
     && day.zones.length === 0
     && day.helpers.length === 0
     && day.adjustments.length === 0;
-}
-
-async function pickDayToDisplayAfterImport(importedDates: string[]): Promise<DayRecord | null> {
-  const today = todayKey();
-  if (importedDates.includes(today)) return store.getDay(today);
-  const firstDate = importedDates[0];
-  return firstDate ? store.getDay(firstDate) : store.getDay(today);
 }
 
 async function loadCorrectionDate(): Promise<void> {
