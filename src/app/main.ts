@@ -5,6 +5,7 @@ import { calculateDay } from "../domain/deliveryCalc";
 import { buildDailyReport } from "../domain/reportBuilder";
 import { resolveMijuDetailQuantity, validateZoneQuantity } from "../domain/zoneValidation";
 import { resolveMissingDeliveryStart } from "../domain/deliveryStartRecovery";
+import { validateTimeAxis } from "../domain/timeAxisValidation";
 import type { DayCalculation, DayRecord, HelperRecord, ReportResult, TimelineEvent, TimelineEventType, ZoneRecord } from "../domain/types";
 import { buildPhoneInstallDashboard, preparePhoneInstallUpdate } from "../install/phoneInstall";
 import {
@@ -1930,7 +1931,7 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   if (action === "reset-confirm") {
     const label = currentDay.date === todayKey() ? "오늘 기록" : `${currentDay.date} 기록`;
     if (!confirm(`${label}을 초기화할까요? 먼저 스냅샷을 만든 뒤 진행합니다.`)) return;
-    await downloadPreparedSnapshot("reset-before", { kind: "date", date: currentDay.date });
+    await savePreparedSnapshot("reset-before", { kind: "date", date: currentDay.date });
     currentDay = createEmptyDay(currentDay.date);
     await store.saveDay(currentDay);
     await refreshHistory();
@@ -2346,7 +2347,7 @@ async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
   }
 
   const nextName = resolveCorrectionZoneName(kind, readText("#correction-zone-name", zone.name));
-  await downloadPreparedSnapshot("record-correction-before", { kind: "date", date: currentDay.date });
+  await savePreparedSnapshot("record-correction-before", { kind: "date", date: currentDay.date });
   currentDay = applyCompletedZoneEdit(currentDay, {
     zoneId,
     startAt,
@@ -2454,7 +2455,7 @@ async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
     } else {
       delete payload.total;
     }
-    await downloadPreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
+    await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
     currentDay = updateEvent(currentDay, event.id, { at, payload });
     currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_depart_edit", `진접 출발 ${formatTime(event.at)} -> ${formatTime(at)}`);
   } else {
@@ -2468,7 +2469,7 @@ async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
       toast("청량리 도착은 첫 구역 시작보다 늦을 수 없습니다.");
       return;
     }
-    await downloadPreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
+    await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
     currentDay = updateEvent(currentDay, event.id, { at });
     currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_arrive_edit", `청량리 도착 ${formatTime(event.at)} -> ${formatTime(at)}`);
   }
@@ -2495,7 +2496,7 @@ async function saveLogIncidentEdit(event: TimelineEvent): Promise<void> {
   } else {
     delete payload.minutes;
   }
-  await downloadPreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
+  await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
   currentDay = updateEvent(currentDay, event.id, { at, zoneId, payload, note: readText(`#${baseId}-note`, "") || undefined });
   currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_incident_edit", `${title} 이벤트 수정`);
   activeLogEditEventId = "";
@@ -2543,7 +2544,7 @@ async function saveLogZoneEventEdit(event: TimelineEvent): Promise<void> {
     updateInput.extra = readLimitedNumber(`#${baseId}-extra`, 3);
   }
 
-  await downloadPreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
+  await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
   currentDay = applyCompletedZoneEdit(currentDay, updateInput);
   ensureDeliveryStartBeforeZoneEnd(zoneId, nextEndAt);
   currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_zone_edit", `${event.type} 수정`);
@@ -2595,7 +2596,7 @@ async function convertCompletedZoneToHelper(zoneId: string, kind: "free_received
   }
   const label = getHelperKindLabel(kind);
   if (!confirm(`${zone.name} ${quantity}개를 ${label}으로 전환할까요? 전환 전 백업을 먼저 만듭니다.`)) return;
-  await downloadPreparedSnapshot("helper-convert-before", { kind: "date", date: currentDay.date });
+  await savePreparedSnapshot("helper-convert-before", { kind: "date", date: currentDay.date });
   const linkedEventIds = currentDay.timeline
     .filter((event) => event.zoneId === zoneId)
     .map((event) => event.id);
@@ -2660,7 +2661,7 @@ async function saveHelperCorrection(helperId?: string): Promise<void> {
     return;
   }
   const label = getHelperKindLabel(kind);
-  await downloadPreparedSnapshot("helper-correction-before", { kind: "date", date: currentDay.date });
+  await savePreparedSnapshot("helper-correction-before", { kind: "date", date: currentDay.date });
   currentDay = {
     ...currentDay,
     timeline: currentDay.timeline.map((event) => {
@@ -2732,7 +2733,7 @@ async function addCorrectionHelper(): Promise<void> {
     return;
   }
   const label = getHelperKindLabel(kind);
-  await downloadPreparedSnapshot("helper-add-correction-before", { kind: "date", date: currentDay.date });
+  await savePreparedSnapshot("helper-add-correction-before", { kind: "date", date: currentDay.date });
   addReceivedHelperRecord({
     kind,
     quantity: quantityInput.value,
@@ -2768,7 +2769,7 @@ async function restoreHelperToZone(helperId?: string): Promise<void> {
   const zoneId = createRestoredZoneId(target);
   const zoneName = getRestoredZoneName(target);
   if (!confirm(`${helper.name} ${quantity}개를 ${zoneName} 구역 기록으로 복구할까요? 복구 전 백업을 먼저 만듭니다.`)) return;
-  await downloadPreparedSnapshot("helper-restore-before", { kind: "date", date: currentDay.date });
+  await savePreparedSnapshot("helper-restore-before", { kind: "date", date: currentDay.date });
   const startAt = addMinutes(event.at, -5);
   const endAt = event.at;
   currentDay = {
@@ -3060,7 +3061,7 @@ async function saveCompletedZoneEdit(zoneId: string): Promise<void> {
     toast(timeError);
     return;
   }
-  await downloadPreparedSnapshot("zone-edit-before", { kind: "date", date: currentDay.date });
+  await savePreparedSnapshot("zone-edit-before", { kind: "date", date: currentDay.date });
   currentDay = applyCompletedZoneEdit(currentDay, {
     zoneId,
     startAt,
@@ -3107,6 +3108,19 @@ function validateZoneEditTimes(zoneId: string, input: {
 
   const dayClose = currentDay?.timeline.find((event) => event.type === "day_close");
   if (isAfter(input.endAt, dayClose?.at)) return "구역 종료는 업무 종료보다 늦을 수 없습니다.";
+  if (currentDay) {
+    const candidate = applyCompletedZoneEdit(currentDay, {
+      zoneId,
+      startAt: input.startAt,
+      deliveryStartAt: input.deliveryStartAt,
+      sortingStartAt: input.sortingStartAt,
+      sortingEndAt: input.sortingEndAt,
+      endAt: input.endAt,
+      reason: "time_axis_preview",
+    });
+    const axisIssue = validateTimeAxis(candidate)[0];
+    if (axisIssue) return axisIssue.message;
+  }
   return undefined;
 }
 
@@ -3513,12 +3527,12 @@ async function downloadFullBackup(filename: string): Promise<void> {
   await platform.exportJson(backup, filename);
 }
 
-async function downloadPreparedSnapshot(
+async function savePreparedSnapshot(
   label: string,
   scope: Parameters<typeof preparePhoneInstallUpdate>[1] = { kind: "all" },
 ): Promise<void> {
   const plan = await preparePhoneInstallUpdate(store, scope);
-  await platform.exportJson(plan.snapshot, buildBackupFilename(label));
+  await platform.saveJsonSnapshot(plan.snapshot, buildBackupFilename(label));
 }
 
 function buildBackupFilename(label: string): string {

@@ -10,6 +10,7 @@ import {
 import { calculateDay, calculateZone } from "../src/domain/deliveryCalc";
 import { resolveMijuDetailQuantity, validateZoneQuantity } from "../src/domain/zoneValidation";
 import { resolveMissingDeliveryStart } from "../src/domain/deliveryStartRecovery";
+import { validateTimeAxis } from "../src/domain/timeAxisValidation";
 import {
   applyMissingCleanupCorrection,
   hasMissingCleanupFinish,
@@ -157,6 +158,66 @@ test("validateTimeline catches core timeline integrity issues", () => {
   assert.equal(codes.includes("zone_missing_linked_event"), true);
 });
 
+test("time axis rejects a delayed direct delivery start", () => {
+  const direct = {
+    ...sampleDayRecord,
+    timeline: sampleDayRecord.timeline
+      .filter((event) => event.id !== "evt-004" && event.id !== "evt-005")
+      .map((event) => event.id === "evt-006" ? { ...event, at: "2026-05-17T09:05:00+09:00" } : event),
+    zones: sampleDayRecord.zones.map((zone) => ({
+      ...zone,
+      sortingStartEventId: undefined,
+      sortingEndEventId: undefined,
+    })),
+  };
+
+  assert.equal(validateTimeAxis(direct).some((issue) => issue.code === "direct_delivery_delayed"), true);
+});
+
+test("time axis accepts an immediate direct delivery start", () => {
+  const direct = {
+    ...sampleDayRecord,
+    timeline: sampleDayRecord.timeline
+      .filter((event) => event.id !== "evt-004" && event.id !== "evt-005")
+      .map((event) => event.id === "evt-006" ? { ...event, at: "2026-05-17T09:01:00+09:00" } : event),
+    zones: sampleDayRecord.zones.map((zone) => ({
+      ...zone,
+      sortingStartEventId: undefined,
+      sortingEndEventId: undefined,
+    })),
+  };
+
+  assert.equal(validateTimeAxis(direct).some((issue) => issue.code === "direct_delivery_delayed"), false);
+});
+test("time axis rejects sorting delivery before sorting completion", () => {
+  const broken = {
+    ...sampleDayRecord,
+    timeline: sampleDayRecord.timeline.map((event) => event.id === "evt-006" ? { ...event, at: "2026-05-17T09:20:00+09:00" } : event),
+  };
+
+  assert.equal(validateTimeAxis(broken).some((issue) => issue.code === "delivery_before_sorting_end"), true);
+});
+
+test("time axis rejects a zone overlapping the prior ordered zone", () => {
+  const secondZone = { id: "alt-2", name: "대체배송", order: 2, startEventId: "alt-start", endEventId: "alt-end" };
+  const secondEvents: TimelineEvent[] = [
+    { ...sampleDayRecord.timeline[0]!, id: "alt-start", type: "zone_start", zoneId: "alt-2", at: "2026-05-17T11:10:00+09:00" },
+    { ...sampleDayRecord.timeline[0]!, id: "alt-end", type: "zone_end", zoneId: "alt-2", at: "2026-05-17T11:30:00+09:00", payload: { delivered: 1 } },
+  ];
+  const broken = { ...sampleDayRecord, zones: [...sampleDayRecord.zones, secondZone], timeline: [...sampleDayRecord.timeline, ...secondEvents] };
+
+  assert.equal(validateTimeAxis(broken).some((issue) => issue.code === "zone_overlaps_previous"), true);
+});
+
+test("missing delivery recovery never starts before the current zone", () => {
+  const result = resolveMissingDeliveryStart({
+    previousEndAt: "2026-05-17T10:00:00+09:00",
+    zoneStartAt: "2026-05-17T10:20:00+09:00",
+    endAt: "2026-05-17T11:00:00+09:00",
+  });
+
+  assert.equal(result.at, "2026-05-17T10:20:00+09:00");
+});
 test("calculateZone derives time, counts, and efficiency from timeline", () => {
   const zone = calculateZone(sampleDayRecord, "zone-a");
 

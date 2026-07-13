@@ -6,6 +6,7 @@ import type {
   TimelineEventPayload,
   TimelineEventType,
 } from "./types";
+import { validateTimeAxis } from "./timeAxisValidation";
 
 export interface EventInput {
   id?: string;
@@ -146,6 +147,10 @@ export function validateTimeline(dayRecord: DayRecord): TimelineValidation {
         });
       }
     }
+  }
+
+  for (const issue of validateTimeAxis(dayRecord)) {
+    warnings.push(issue);
   }
 
   return {
