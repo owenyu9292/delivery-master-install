@@ -2,8 +2,8 @@
 
 ## 1. 현재 기준
 
-- 현재 개발앱 PWA의 source-of-truth는 이 저장소의 `src/`다.
-- 개발앱 PWA는 설치판 제작 이후에도 원본 코드와 긴급 복구 기준으로 유지한다.
+- 정식 Android 인스톨 앱의 source-of-truth는 이 저장소의 `src/`다.
+- PWA v1과 season2는 보관·복구 기준으로 유지하며 명시 승인 없이는 수정하지 않는다.
 - 기존 현장앱 v1과 season2는 보관/백업용이며 설치판 구현 대상으로 사용하지 않는다.
 - 설치판은 별도 복제 앱이 아니라 같은 도메인/UI 소스를 Android 실행 환경에 연결한 배포 형태다.
 
@@ -17,16 +17,16 @@
 ## 3. 원본과 설치판의 관계
 
 ```text
-개발앱 PWA 원본(src/domain, src/ui, src/app)
+Android 인스톨 앱 원본(src/domain, src/ui, src/app)
   -> 공통 빌드
-     -> GitHub Pages PWA
-     -> Capacitor Android 설치판
+     -> Capacitor Android APK
+        -> GitHub APK 다운로드·업데이트 설치
 ```
 
 - 계산, `DayRecord.timeline`, 리포트, 통계는 공통 소스를 사용한다.
 - Android 전용 코드는 저장소, 파일 내보내기, 업데이트, 뒤로가기 같은 플랫폼 경계에만 둔다.
-- PWA와 설치판이 업무 로직을 복사해 따로 발전하게 만들지 않는다.
-- 설치판에서 발견한 공통 버그는 공통 원본에 반영한 뒤 PWA와 설치판을 각각 검증한다.
+- 보관용 PWA와 설치판이 업무 로직을 복사해 따로 발전하게 만들지 않는다.
+- 설치판에서 발견한 공통 버그는 이 공통 원본에 반영한 뒤 Android 빌드와 실기기 검수로 확인한다.
 
 ## 4. 내부 저장
 
@@ -81,6 +81,6 @@
 - Android package ID: `io.github.owenyu9292.deliverymaster` 확정
 - 서명키 생성 및 이중 백업 위치
 - SQLite 플러그인의 SQLCipher 포함에 따른 배포 방식별 수출 규정 확인
-- APK 직접 배포 또는 Play 내부 테스트
+- GitHub APK 다운로드·업데이트 설치: 확정 (Play 내부 테스트는 별도 선택 과제)
 - 내부 백업 보존 개수와 회전 규칙
 - PWA/설치판 병행 기간의 데이터 합치기 정책

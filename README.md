@@ -1,5 +1,7 @@
 # delivery-master-install
 
+> **현재 효력 규칙:** `OPERATING_RULES.md`가 이 문서의 과거 PWA·GitHub Pages 설명보다 우선합니다. 정식 제품은 Android 인스톨 앱이며, 일반 배포는 GitHub APK 다운로드·업데이트 설치만 사용합니다.
+
 ## 00. Operating Rule: Report Before Action
 
 All coding, file creation, folder creation, document updates, GitHub upload, commit, push, deployment, and fallback-path decisions must be reported to the user first and executed only after approval.
@@ -10,7 +12,7 @@ All coding, file creation, folder creation, document updates, GitHub upload, com
 
 ## Current Folder Role
 
-This folder is the single source-of-truth and GitHub Pages deploy repository for the Delivery Master install/development app line inside:
+This folder is the Android install app source-of-truth and GitHub APK distribution repository for the Delivery Master app line inside:
 
 `C:\Codex55Workspace\delivery-master\delivery-master-install-deploy`
 
@@ -20,7 +22,7 @@ The previous source folder was:
 
 That previous folder is only the migration source. Future coding work must happen in this repository after the source files are migrated here.
 
-## Source And Deploy Layout
+## Source And Build Layout
 
 Expected source files in this repository:
 
@@ -32,7 +34,7 @@ Expected source files in this repository:
 - `tsconfig.json`
 - project rule and tracking markdown files
 
-Current GitHub Pages publish files:
+Legacy web/PWA publish files (not the formal app update target):
 
 - `index.html`
 - `styles.css`
@@ -64,8 +66,8 @@ The old Season2 PWA folder is not part of this install app source and must not b
 
 ## Android Install Direction
 
-- The current development PWA is the shared source-of-truth.
-- Android installation builds derive from the same domain, UI, and app source.
+- The Android install app source in this repository is the formal source-of-truth.
+- Android installation builds use the domain, UI, and app source in this repository.
 - Capacitor 8 and a SQLite-backed `DayStore` are implemented behind runtime platform selection.
 - PWA IndexedDB data moves through one verified full-backup import and is not assumed to transfer automatically.
-- The Android project and debug APK are generated with package ID `io.github.owenyu9292.deliverymaster`; release signing and device validation remain pending.
+- The Android project and APK use package ID `io.github.owenyu9292.deliverymaster`; formal updates are published through GitHub APK download/install.

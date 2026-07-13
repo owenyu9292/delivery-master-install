@@ -1,7 +1,7 @@
 # 배송마스터 개발앱 작업 지침
 
-이 문서는 이 프로젝트의 최상위 작업 규칙이다.
-다른 오래된 문서와 충돌하면 이 문서를 우선한다.
+이 문서는 프로젝트 상세 작업 규칙이다. 현재 운영 우선순위는 `OPERATING_RULES.md`를 따른다.
+`OPERATING_RULES.md`와 충돌하면 그 문서를 우선하고, 이 문서는 세부 작업 규칙으로 적용한다.
 오빠는 기본적으로 이 문서만 확인하면 되고, 나머지 문서는 이 규칙을 실행하기 위한 장부다.
 
 ## 0-0. 현재 세대 / 폴더 기준
@@ -9,15 +9,16 @@
 - 기존 PWA 현장앱 v1은 `C:\Codex55Workspace\delivery-master`에 있으며, 최초 개발 현장앱 원본/보관/백업 기준으로 보호한다.
 - 기존 PWA 현장앱 season2는 `C:\Codex55Workspace\delivery-master\season2`에 있으며, 두 번째 현장앱 원본/보관/백업 기준으로 보호한다.
 - 위 두 현장앱은 사용자가 명시하지 않으면 수정하지 않는다. 현재는 데이터 보관과 비상 백업 기준으로 본다.
-- 현재 실사용 및 개발 source-of-truth는 `C:\Codex55Workspace\delivery-master\delivery-master-install-deploy`의 개발앱 PWA repo다.
+- 현재 실사용 및 개발 source-of-truth는 `C:\Codex55Workspace\delivery-master\delivery-master-install-deploy`의 Android 인스톨 앱 소스다.
 - 이전 source-of-truth였던 `C:\#WORKSPACE\AI_HUB\AI_WORKSPACE\PROJECTS\delivery-master-install`는 이관 출처이며, 새 작업 기준이 아니다.
-- `C:\Codex55Workspace\delivery-master\delivery-master-install-deploy`는 원본 소스, 빌드 결과, GitHub Pages 배포를 함께 관리하는 단일 repo다.
+- 이 저장소는 원본 소스, Android 빌드 결과, GitHub APK 배포를 함께 관리하는 단일 repo다. GitHub Pages는 과거 PWA 웹 경로일 뿐 정식 업데이트 경로가 아니다.
 - `C:\Codex55Workspace\OpenCloAIOrchestration\deploy-delivery-master-install-*` 같은 과거 배포 사본은 source-of-truth가 아니다.
-- 개발앱 PWA가 안정화되면 이를 새 원본 앱으로 승격하고, 별도 리마스터링을 거쳐 핸드폰 인스톨 버전을 만든다.
-- 현재 개발앱 PWA를 설치판의 공통 원본으로 사용하고 설치판 소스를 별도 복제해 갈라놓지 않는다.
+- PWA v1과 season2는 보관·복구용이며, 명시 승인 없이는 수정·빌드·배포하지 않는다.
 - Android 설치판 구조와 데이터 이전 기준은 `INSTALL_ARCHITECTURE.md`를 따른다.
-- 패키징, package ID, 서명키, 네이티브 플러그인, 배포 채널은 각각 승인 대상이다.
-- 작업 전에는 반드시 대상이 현장앱 v1, 현장앱 season2, 개발앱 PWA 원본, 배포 repo 중 어디인지 구분한다.
+- 패키징, package ID, 서명키, 네이티브 플러그인, 배포 채널은 각각 승인 대상이다. 정식 배포 채널은 GitHub APK 다운로드·업데이트 설치다.
+- 범위가 분리 가능한 조사, 문서 대조, 테스트, 보조 구현은 루나를 우선 사용한다. 코기는 병합·검수·커밋·GitHub 업로드와 최종 보고를 맡는다.
+- USB/ADB는 로컬 실기기 검수·긴급 진단용이며 일반 배포 경로가 아니다.
+- 작업 전에는 반드시 대상이 Android 인스톨 앱인지, PWA v1/season2 보관본인지 구분한다.
 
 ## 0. 최상위 설계 원칙: 사용자 편의
 
