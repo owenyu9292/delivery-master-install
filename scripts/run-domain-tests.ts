@@ -9,6 +9,7 @@ import {
 } from "../src/domain/eventTimeline";
 import { calculateDay, calculateZone } from "../src/domain/deliveryCalc";
 import { resolveMijuDetailQuantity, validateZoneQuantity } from "../src/domain/zoneValidation";
+import { resolveMissingDeliveryStart } from "../src/domain/deliveryStartRecovery";
 import {
   applyMissingCleanupCorrection,
   hasMissingCleanupFinish,
@@ -1329,6 +1330,46 @@ function createSimpleEvent(
   };
 }
 
+test("missing delivery start uses sorting completion before zone end", () => {
+  const result = resolveMissingDeliveryStart({
+    endAt: "2026-07-13T16:03:00+09:00",
+    sortingEndAt: "2026-07-13T13:59:00+09:00",
+    previousEndAt: "2026-07-13T13:24:00+09:00",
+  });
+
+  assert.equal(result.at, "2026-07-13T13:59:00+09:00");
+  assert.equal(result.correctionReason, "정리 완료 시각을 배송 시작으로 사용");
+});
+
+test("missing delivery start uses previous zone end plus five minutes", () => {
+  const result = resolveMissingDeliveryStart({
+    endAt: "2026-07-13T16:03:00+09:00",
+    previousEndAt: "2026-07-13T13:24:00+09:00",
+    zoneStartAt: "2026-07-13T13:24:00+09:00",
+  });
+
+  assert.equal(result.at, "2026-07-13T04:29:00.000Z");
+  assert.equal(result.correctionReason, "이전 구역 종료 + 5분을 배송 시작으로 사용");
+});
+
+test("first zone missing delivery start falls back to the zone start", () => {
+  const result = resolveMissingDeliveryStart({
+    endAt: "2026-07-13T12:08:00+09:00",
+    zoneStartAt: "2026-07-13T11:17:00+09:00",
+    arriveAt: "2026-07-13T11:10:00+09:00",
+  });
+
+  assert.equal(result.at, "2026-07-13T11:17:00+09:00");
+});
+
+test("missing delivery start never moves after the zone end", () => {
+  const result = resolveMissingDeliveryStart({
+    endAt: "2026-07-13T13:24:00+09:00",
+    previousEndAt: "2026-07-13T13:23:00+09:00",
+  });
+
+  assert.equal(result.at, "2026-07-13T13:24:00+09:00");
+});
 let passed = 0;
 
 for (const [name, fn] of tests) {

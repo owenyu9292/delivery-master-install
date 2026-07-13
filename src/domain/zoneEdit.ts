@@ -4,6 +4,7 @@ import type { AdjustmentRecord, DayRecord, TimelineEvent, TimelineEventPayload }
 export interface CompletedZoneEditInput {
   zoneId: string;
   startAt?: string;
+  deliveryStartAt?: string;
   sortingStartAt?: string;
   sortingEndAt?: string;
   endAt?: string;
@@ -67,11 +68,13 @@ function buildEventUpdates(
 ): Map<string, Partial<TimelineEvent>> {
   const updates = new Map<string, Partial<TimelineEvent>>();
   const start = findZoneEvent(dayRecord, input.zoneId, "zone_start");
+  const deliveryStart = findZoneEvent(dayRecord, input.zoneId, "delivery_start");
   const sortingStart = findZoneEvent(dayRecord, input.zoneId, "sorting_start");
   const sortingEnd = findZoneEvent(dayRecord, input.zoneId, "sorting_end");
   const end = findZoneEvent(dayRecord, input.zoneId, "zone_end");
 
   if (start && input.startAt) updates.set(start.id, { at: input.startAt });
+  if (deliveryStart && input.deliveryStartAt) updates.set(deliveryStart.id, { at: input.deliveryStartAt });
   if (sortingStart && input.sortingStartAt) updates.set(sortingStart.id, { at: input.sortingStartAt });
   if (sortingEnd && input.sortingEndAt) updates.set(sortingEnd.id, { at: input.sortingEndAt });
   if (end) {

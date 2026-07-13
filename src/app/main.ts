@@ -4,6 +4,7 @@ import { createEvent, updateEvent } from "../domain/eventTimeline";
 import { calculateDay } from "../domain/deliveryCalc";
 import { buildDailyReport } from "../domain/reportBuilder";
 import { resolveMijuDetailQuantity, validateZoneQuantity } from "../domain/zoneValidation";
+import { resolveMissingDeliveryStart } from "../domain/deliveryStartRecovery";
 import type { DayCalculation, DayRecord, HelperRecord, ReportResult, TimelineEvent, TimelineEventType, ZoneRecord } from "../domain/types";
 import { buildPhoneInstallDashboard, preparePhoneInstallUpdate } from "../install/phoneInstall";
 import {
@@ -79,6 +80,7 @@ type LogEditKind =
   | "depart"
   | "arrive"
   | "zone_start"
+  | "delivery_start"
   | "sorting_start"
   | "sorting_end"
   | "zone_end"
@@ -896,7 +898,15 @@ function buildLogEntriesForDay(dayRecord: DayRecord, calculation: DayCalculation
       const detail = event.zoneId === "miju" ? buildMijuStartDetailForDay(dayRecord) : buildMovementDetail(zoneCalc);
       entries.push({ ...baseEntry, title: `${getZoneOrderLabelForDay(dayRecord, event.zoneId)} 시작 · ${zoneName}`, detail, kind: "zone" });
     } else if (event.type === "delivery_start") {
-      entries.push({ ...baseEntry, title: "바로 배송 시작", detail: zoneName ? `${zoneName} 진행 중` : undefined, kind: "zone" });
+      const corrected = payload?.autoCorrected === true;
+      entries.push({
+        ...baseEntry,
+        title: corrected ? "배송 시작 자동 보정" : "바로 배송 시작",
+        detail: corrected
+          ? `${zoneName ?? "구역"} · ${typeof payload?.correctionReason === "string" ? payload.correctionReason : "시작 누락 보정"}`
+          : zoneName ? `${zoneName} 진행 중` : undefined,
+        kind: "zone",
+      });
     } else if (event.type === "sorting_start") {
       entries.push({ ...baseEntry, title: "정리 시작", detail: buildMovementDetail(zoneCalc), kind: "sorting" });
     } else if (event.type === "sorting_end") {
@@ -967,6 +977,10 @@ function renderLogInlineEditor(eventId: string, editKind?: LogEditKind): string 
 
   if (editKind === "zone_start") {
     return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 시작 수정`, "구역 시작 시각을 고치면 앞뒤 구역 순서 검사도 같이 거칩니다.", "", "구역 시작 시각");
+  }
+
+  if (editKind === "delivery_start") {
+    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 배송 시작 수정`, "배송 시작 시각을 고치면 실제 배송 시간과 효율이 다시 계산됩니다.", "", "배송 시작 시각");
   }
 
   if (editKind === "sorting_start") {
@@ -1117,6 +1131,8 @@ function getLogEditKind(event: TimelineEvent): LogEditKind | undefined {
       return "arrive";
     case "zone_start":
       return "zone_start";
+    case "delivery_start":
+      return "delivery_start";
     case "sorting_start":
       return "sorting_start";
     case "sorting_end":
@@ -2314,14 +2330,16 @@ async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
   if (delivered === undefined) return;
 
   const start = latestZoneEvent(zoneId, "zone_start");
+  const deliveryStart = latestZoneEvent(zoneId, "delivery_start");
   const end = latestZoneEvent(zoneId, "zone_end");
   const sortingStart = latestZoneEvent(zoneId, "sorting_start");
   const sortingEnd = latestZoneEvent(zoneId, "sorting_end");
   const startAt = readChangedTimeInput("#correction-zone-start", start?.at);
+  const deliveryStartAt = deliveryStart?.at;
   const endAt = readChangedTimeInput("#correction-zone-end", end?.at);
   const sortingStartAt = readChangedTimeInput("#correction-zone-sorting-start", sortingStart?.at);
   const sortingEndAt = readChangedTimeInput("#correction-zone-sorting-end", sortingEnd?.at);
-  const timeError = validateZoneEditTimes(zoneId, { startAt, endAt, sortingStartAt, sortingEndAt });
+  const timeError = validateZoneEditTimes(zoneId, { startAt, deliveryStartAt, endAt, sortingStartAt, sortingEndAt });
   if (timeError) {
     toast(timeError);
     return;
@@ -2332,6 +2350,7 @@ async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
   currentDay = applyCompletedZoneEdit(currentDay, {
     zoneId,
     startAt,
+    deliveryStartAt,
     endAt,
     sortingStartAt,
     sortingEndAt,
@@ -2340,6 +2359,7 @@ async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
     extra: readLimitedNumber("#correction-zone-extra", 3),
     reason: "record_correction_panel",
   });
+  ensureDeliveryStartBeforeZoneEnd(zoneId, endAt);
   currentDay = {
     ...currentDay,
     zones: currentDay.zones.map((candidate) =>
@@ -2487,20 +2507,22 @@ async function saveLogZoneEventEdit(event: TimelineEvent): Promise<void> {
   if (!currentDay || !event.zoneId) return;
   const zoneId = event.zoneId;
   const start = latestZoneEvent(zoneId, "zone_start");
+  const deliveryStart = latestZoneEvent(zoneId, "delivery_start");
   const end = latestZoneEvent(zoneId, "zone_end");
   const sortingStart = latestZoneEvent(zoneId, "sorting_start");
   const sortingEnd = latestZoneEvent(zoneId, "sorting_end");
   const baseId = `log-edit-${event.id}`;
 
   const nextStartAt = event.type === "zone_start" ? readRequiredDigitTimeInput(`${baseId}-time`, "구역 시작 시각", start?.at ?? event.at) : start?.at;
+  const nextDeliveryStartAt = event.type === "delivery_start" ? readRequiredDigitTimeInput(`${baseId}-time`, "배송 시작 시각", deliveryStart?.at ?? event.at) : deliveryStart?.at;
   const nextSortingStartAt = event.type === "sorting_start" ? readRequiredDigitTimeInput(`${baseId}-time`, "정리 시작 시각", sortingStart?.at ?? event.at) : sortingStart?.at;
   const nextSortingEndAt = event.type === "sorting_end" ? readRequiredDigitTimeInput(`${baseId}-time`, "정리 완료 시각", sortingEnd?.at ?? event.at) : sortingEnd?.at;
   const nextEndAt = event.type === "zone_end" ? readRequiredDigitTimeInput(`${baseId}-time`, "구역 완료 시각", end?.at ?? event.at) : end?.at;
-  if ((event.type === "zone_start" && !nextStartAt) || (event.type === "sorting_start" && !nextSortingStartAt) || (event.type === "sorting_end" && !nextSortingEndAt) || (event.type === "zone_end" && !nextEndAt)) {
+  if ((event.type === "zone_start" && !nextStartAt) || (event.type === "delivery_start" && !nextDeliveryStartAt) || (event.type === "sorting_start" && !nextSortingStartAt) || (event.type === "sorting_end" && !nextSortingEndAt) || (event.type === "zone_end" && !nextEndAt)) {
     return;
   }
 
-  const timeError = validateZoneEditTimes(zoneId, { startAt: nextStartAt, endAt: nextEndAt, sortingStartAt: nextSortingStartAt, sortingEndAt: nextSortingEndAt });
+  const timeError = validateZoneEditTimes(zoneId, { startAt: nextStartAt, deliveryStartAt: nextDeliveryStartAt, endAt: nextEndAt, sortingStartAt: nextSortingStartAt, sortingEndAt: nextSortingEndAt });
   if (timeError) {
     toast(timeError);
     return;
@@ -2508,6 +2530,7 @@ async function saveLogZoneEventEdit(event: TimelineEvent): Promise<void> {
 
   const updateInput: Parameters<typeof applyCompletedZoneEdit>[1] = { zoneId, reason: "log_inline_zone_edit" };
   if (event.type === "zone_start") updateInput.startAt = nextStartAt;
+  if (event.type === "delivery_start") updateInput.deliveryStartAt = nextDeliveryStartAt;
   if (event.type === "sorting_start") updateInput.sortingStartAt = nextSortingStartAt;
   if (event.type === "sorting_end") updateInput.sortingEndAt = nextSortingEndAt;
   if (event.type === "zone_end") {
@@ -2522,6 +2545,7 @@ async function saveLogZoneEventEdit(event: TimelineEvent): Promise<void> {
 
   await downloadPreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
   currentDay = applyCompletedZoneEdit(currentDay, updateInput);
+  ensureDeliveryStartBeforeZoneEnd(zoneId, nextEndAt);
   currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_zone_edit", `${event.type} 수정`);
   activeLogEditEventId = "";
   toast("구역 원본 기록을 저장했습니다.");
@@ -2874,6 +2898,27 @@ function addZoneEvent(type: "sorting_start" | "sorting_end", zoneId: string): vo
   linkLatestEvent(zoneId, type, type === "sorting_start" ? "sortingStartEventId" : "sortingEndEventId");
 }
 
+function ensureDeliveryStartBeforeZoneEnd(zoneId: string, endAt: string | undefined): void {
+  if (!currentDay || !endAt || hasZoneEvent(zoneId, "delivery_start")) return;
+
+  const resolution = resolveMissingDeliveryStart({
+    endAt,
+    sortingEndAt: latestZoneEvent(zoneId, "sorting_end")?.at,
+    previousEndAt: getPreviousZoneEndAt(zoneId),
+    zoneStartAt: latestZoneEvent(zoneId, "zone_start")?.at,
+    arriveAt: currentDay.timeline.find((event) => event.type === "arrive_cheongnyangni")?.at,
+  });
+
+  currentDay = createEvent(currentDay, {
+    type: "delivery_start",
+    at: resolution.at,
+    zoneId,
+    payload: { autoCorrected: true, correctionReason: resolution.correctionReason },
+    note: "배송 시작 누락 자동 보정",
+  });
+  linkLatestEvent(zoneId, "delivery_start", "deliveryStartEventId");
+}
+
 function addDeliveryStart(zoneId: string): void {
   if (!currentDay || hasZoneEvent(zoneId, "delivery_start")) return;
   ensureZone(zoneId);
@@ -2912,6 +2957,7 @@ function completeZoneEnd(
   options: { mijuInput?: MijuInputParts; overrideReason?: string; enteredQuantity?: number } = {},
 ): void {
   if (!currentDay) return;
+  const endAt = nowIso();
   const zone = ensureZone(zoneId);
   const mijuInput = options.mijuInput;
   const mijuParts = mijuInput ? buildMijuPartsFromZoneTotal(mijuInput, delivered) : undefined;
@@ -2919,9 +2965,10 @@ function completeZoneEnd(
     toast(mijuParts.message ?? "미주 수량을 확인하세요.");
     return;
   }
+  ensureDeliveryStartBeforeZoneEnd(zoneId, endAt);
   currentDay = createEvent(currentDay, {
     type: "zone_end",
-    at: nowIso(),
+    at: endAt,
     zoneId,
     payload: {
       total: delivered,
@@ -2999,14 +3046,16 @@ async function saveCompletedZoneEdit(zoneId: string): Promise<void> {
     return;
   }
   const start = latestZoneEvent(zoneId, "zone_start");
+  const deliveryStart = latestZoneEvent(zoneId, "delivery_start");
   const end = latestZoneEvent(zoneId, "zone_end");
   const sortingStart = latestZoneEvent(zoneId, "sorting_start");
   const sortingEnd = latestZoneEvent(zoneId, "sorting_end");
   const startAt = readOptionalTimeInput(`#edit-${zoneId}-start`, start?.at);
+  const deliveryStartAt = deliveryStart?.at;
   const endAt = readOptionalTimeInput(`#edit-${zoneId}-end`, end?.at);
   const sortingStartAt = readOptionalTimeInput(`#edit-${zoneId}-sorting-start`, sortingStart?.at);
   const sortingEndAt = readOptionalTimeInput(`#edit-${zoneId}-sorting-end`, sortingEnd?.at);
-  const timeError = validateZoneEditTimes(zoneId, { startAt, endAt, sortingStartAt, sortingEndAt });
+  const timeError = validateZoneEditTimes(zoneId, { startAt, deliveryStartAt, endAt, sortingStartAt, sortingEndAt });
   if (timeError) {
     toast(timeError);
     return;
@@ -3015,6 +3064,7 @@ async function saveCompletedZoneEdit(zoneId: string): Promise<void> {
   currentDay = applyCompletedZoneEdit(currentDay, {
     zoneId,
     startAt,
+    deliveryStartAt,
     endAt,
     sortingStartAt,
     sortingEndAt,
@@ -3027,20 +3077,25 @@ async function saveCompletedZoneEdit(zoneId: string): Promise<void> {
     mijuRest: editParts?.hasDetail ? editParts.rest : undefined,
     reason: "completed_zone_edit_from_app",
   });
+  ensureDeliveryStartBeforeZoneEnd(zoneId, endAt);
   toast("완료 구역 수정이 저장됐습니다.");
   await saveAndRender();
 }
 
 function validateZoneEditTimes(zoneId: string, input: {
   startAt?: string;
+  deliveryStartAt?: string;
   endAt?: string;
   sortingStartAt?: string;
   sortingEndAt?: string;
 }): string | undefined {
   if (isAfter(input.startAt, input.endAt)) return "구역 시작 시각이 종료 시각보다 늦습니다.";
+  if (isBefore(input.deliveryStartAt, input.startAt)) return "배송 시작은 구역 시작보다 빠를 수 없습니다.";
+  if (isAfter(input.deliveryStartAt, input.endAt)) return "배송 시작은 구역 종료보다 늦을 수 없습니다.";
   if (isAfter(input.sortingStartAt, input.sortingEndAt)) return "정리 시작 시각이 정리 완료 시각보다 늦습니다.";
   if (isAfter(input.startAt, input.sortingStartAt)) return "정리 시작 시각이 구역 시작보다 빠를 수 없습니다.";
   if (isAfter(input.sortingEndAt, input.endAt)) return "정리 완료 시각이 구역 종료보다 늦을 수 없습니다.";
+  if (isAfter(input.sortingEndAt, input.deliveryStartAt)) return "배송 시작은 정리 완료보다 빠를 수 없습니다.";
   const arrive = currentDay?.timeline.find((event) => event.type === "arrive_cheongnyangni");
   if (isBefore(input.startAt, arrive?.at)) return "구역 시작은 청량리 도착보다 빠를 수 없습니다.";
 

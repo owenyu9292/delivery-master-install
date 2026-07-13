@@ -1,3 +1,16 @@
+# 2026-07-13 v29 Android 안전영역 및 배송 시작 누락 보정
+
+- 기록자: 일반 작업창 / 채널: main
+- 범위: **정식 Android 인스톨 앱만 수정**. PWA v1과 `season2`는 보관용으로 변경하지 않았다.
+- 안전영역: Android 15의 edge-to-edge 상태표시줄/하단 시스템바가 앱 UI를 덮지 않도록 시스템 inset을 콘텐츠에 적용했다.
+- 배송 시작 누락 보정: 모든 구역 순서에 공통 적용한다. 완료 시 배송 시작 로그가 없으면 `정리 완료 -> 배송 시작`, 없으면 `이전 구역 종료 + 5분`, 첫 구역은 `구역 시작/청량리 도착` 순으로 자동 보정한다. 종료 시각 이후로 넘어가면 종료 시각으로 제한한다.
+- 기록 복구: 완료기록 수정 및 로그 연필 수정에서도 배송 시작 시각을 고치거나 누락 보정을 생성할 수 있다. 로그에는 `배송 시작 자동 보정`과 보정 이유를 남긴다.
+- 앱/캐시: `0.2.28-android-install` / `v29`.
+- Android: versionCode 2, versionName 0.2.28. 기존 v28과 동일 package ID 및 debug 서명을 유지해 `adb install -r` 또는 동일 서명 APK 설치 시 SQLite 데이터를 유지하는 업데이트 경로다.
+- 검수: `npm run typecheck`, `npm run check` 54/54, `npm run build`, Capacitor sync, Android debug APK clean build 통과.
+- 남은 실기기 게이트: USB 재연결 후 v29 재설치, Fold7 전면 화면에서 상단 상태표시줄/하단 내비게이션 안전영역을 실제 확인한다.
+- GitHub 다운로드 경로: `downloads/DeliveryMaster-v29-debug.apk` (SHA-256 `D3DF70709818630773F1355302080BDF8DEDB921E0999D0C5E289E5D31122917`).
+
 # 2026-07-12 Android 설치판 이관 및 현장 진입 보정
 
 - 기록자: 일반 작업창 / 채널: main
