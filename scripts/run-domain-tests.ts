@@ -31,6 +31,7 @@ import {
   PHONE_INSTALL_BACKUP_FILENAME,
   PHONE_INSTALL_BACKUP_TYPE,
   buildFieldAppMigrationBackup,
+  assertPhoneInstallBackup,
   copyBackupImport,
   createBackupCopyDay,
   exportBackup,
@@ -958,6 +959,21 @@ test("MemoryDayStore copy import never overwrites existing dates", async () => {
   assert.equal(result.imported[0]?.recoveryStatus, "needsReview");
 });
 
+test("MemoryDayStore skip import preserves existing dates and imports missing dates", async () => {
+  const missingDay: DayRecord = {
+    ...structuredClone(sampleDayRecord),
+    id: "day-2026-05-22",
+    date: "2026-05-22",
+  };
+  const store = new MemoryDayStore([sampleDayRecord]);
+  const backup = await store.createBackup();
+  const result = await store.importBackup({ ...backup, days: [sampleDayRecord, missingDay] }, { mode: "skip" });
+
+  assert.deepEqual(result.imported.map((item) => item.date), ["2026-05-22"]);
+  assert.equal(result.skipped[0]?.reason, "existing_day_preserved");
+  assert.deepEqual(await store.getDay(sampleDayRecord.date), sampleDayRecord);
+  assert.ok(await store.getDay("2026-05-22"));
+});
 test("backupImportExport wraps store backup and import workflows", async () => {
   const store = new MemoryDayStore([sampleDayRecord]);
   const backup = await exportBackup(store, { scope: { kind: "date", date: sampleDayRecord.date } });
@@ -996,6 +1012,15 @@ test("backupImportExport rejects field app backups for direct restore", async ()
   );
 });
 
+test("backupImportExport rejects malformed and duplicate day records before import", async () => {
+  const store = new MemoryDayStore([sampleDayRecord]);
+  const backup = await exportBackup(store);
+  const malformed = { ...backup, days: [{ ...sampleDayRecord, timeline: null }] };
+  const duplicate = { ...backup, days: [sampleDayRecord, sampleDayRecord] };
+
+  assert.throws(() => assertPhoneInstallBackup(malformed), /기록 배열이 손상/);
+  assert.throws(() => assertPhoneInstallBackup(duplicate), /중복 날짜/);
+});
 test("fieldAppMigration converts Season2 PWA backup details into DayRecord", () => {
   const fieldBackup = createSampleFieldAppBackup();
   const migration = migrateFieldAppBackup(fieldBackup, { appVersion: "field-test" });

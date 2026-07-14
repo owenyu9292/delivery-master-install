@@ -207,6 +207,25 @@ async function seedPastCorrectionDay(date) {
         }
         const clone = structuredClone(source);
         clone.date = ${JSON.stringify(date)};
+        clone.timeline = clone.timeline.map((event) => ({
+          ...event,
+          at: ${JSON.stringify(date)} + event.at.slice(10),
+        }));
+        clone.zones.forEach((zone) => {
+          const end = clone.timeline.find((event) => event.zoneId === zone.id && event.type === "zone_end");
+          const sortingStart = clone.timeline.find((event) => event.zoneId === zone.id && event.type === "sorting_start");
+          const sortingEnd = clone.timeline.find((event) => event.zoneId === zone.id && event.type === "sorting_end");
+          const invalidSorting = sortingStart && sortingEnd && (
+            sortingStart.at > sortingEnd.at || (end && sortingStart.at > end.at)
+          );
+          if (invalidSorting) {
+            clone.timeline = clone.timeline.filter((event) => event.id !== sortingStart.id && event.id !== sortingEnd.id);
+            zone.sortingStartEventId = undefined;
+            zone.sortingEndEventId = undefined;
+          } else if (end && sortingEnd && sortingEnd.at > end.at) {
+            sortingEnd.at = end.at;
+          }
+        });
         clone.meta = {
           ...clone.meta,
           updatedAt: new Date().toISOString(),

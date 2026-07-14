@@ -49,7 +49,9 @@ assert.equal((await store.createBackup({ kind: "date", date: first.date })).days
 const preview = await store.importBackup({ ...allBackup, days: [first] }, { mode: "preview" });
 assert.equal(preview.preview, true);
 assert.equal(preview.skipped.length, 1);
-const copy = await store.importBackup({ ...allBackup, days: [first] }, { mode: "copy" });
+const skip = await store.importBackup({ ...allBackup, days: [first] }, { mode: "skip" });
+assert.equal(skip.imported.length, 0);
+assert.equal(skip.skipped[0]?.reason, "existing_day_preserved");const copy = await store.importBackup({ ...allBackup, days: [first] }, { mode: "copy" });
 assert.equal(copy.imported.length, 1);
 assert.notEqual(copy.imported[0]?.date, first.date);
 const overwrite = await store.importBackup({ ...allBackup, days: [first] }, { mode: "overwrite" });

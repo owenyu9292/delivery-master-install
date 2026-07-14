@@ -117,17 +117,56 @@ export function normalizePhoneInstallBackup(file: BackupFile): BackupFile {
 }
 
 export function assertPhoneInstallBackup(file: unknown): asserts file is BackupFile {
-  const candidate = file as { app?: string; backupType?: string };
+  if (!file || typeof file !== "object" || Array.isArray(file)) {
+    throw new Error("백업 JSON 최상위 구조가 객체가 아닙니다.");
+  }
+
+  const candidate = file as { app?: string; backupType?: string; schemaVersion?: unknown; days?: unknown };
   if (candidate.app === FIELD_APP_BACKUP_APP) {
     throw new Error("Field app backups must be imported through migration, not direct restore.");
   }
-
   if (candidate.app && candidate.app !== PHONE_INSTALL_BACKUP_APP) {
     throw new Error(`Unsupported backup app: ${candidate.app}`);
   }
-
   if (candidate.backupType && candidate.backupType !== PHONE_INSTALL_BACKUP_TYPE) {
     throw new Error(`Unsupported backup type: ${candidate.backupType}`);
+  }
+  if (candidate.schemaVersion !== 1) {
+    throw new Error("지원하지 않는 백업 스키마입니다.");
+  }
+  if (!Array.isArray(candidate.days)) {
+    throw new Error("백업 JSON에 날짜별 기록 배열이 없습니다.");
+  }
+
+  const seenDates = new Set<string>();
+  candidate.days.forEach((day, index) => {
+    assertBackupDayRecord(day, index);
+    if (seenDates.has(day.date)) {
+      throw new Error(`백업 JSON에 중복 날짜가 있습니다: ${day.date}`);
+    }
+    seenDates.add(day.date);
+  });
+}
+
+function assertBackupDayRecord(day: unknown, index: number): asserts day is DayRecord {
+  if (!day || typeof day !== "object" || Array.isArray(day)) {
+    throw new Error(`백업 ${index + 1}번째 날짜 기록이 객체가 아닙니다.`);
+  }
+  const record = day as Partial<DayRecord>;
+  if (record.schemaVersion !== 1 || typeof record.id !== "string") {
+    throw new Error(`백업 ${index + 1}번째 날짜 기록의 기본 정보가 손상됐습니다.`);
+  }
+  if (typeof record.date !== "string" || !/^\d{4}-\d{2}-\d{2}(?:__copy_\d{14})?$/.test(record.date)) {
+    throw new Error(`백업 ${index + 1}번째 날짜 형식이 올바르지 않습니다.`);
+  }
+  if (!Array.isArray(record.timeline) || !Array.isArray(record.zones)
+    || !Array.isArray(record.helpers) || !Array.isArray(record.adjustments)) {
+    throw new Error(`백업 ${record.date}의 기록 배열이 손상됐습니다.`);
+  }
+  if (!record.meta || typeof record.meta !== "object"
+    || typeof record.meta.createdAt !== "string" || typeof record.meta.updatedAt !== "string"
+    || typeof record.meta.recoveryStatus !== "string") {
+    throw new Error(`백업 ${record.date}의 메타 정보가 손상됐습니다.`);
   }
 }
 

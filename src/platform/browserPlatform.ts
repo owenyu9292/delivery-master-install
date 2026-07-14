@@ -1,4 +1,4 @@
-import type { PlatformServices, PickedTextFile } from "./platformServices";
+import type { ExportJsonResult, PlatformServices, PickedTextFile } from "./platformServices";
 
 export class BrowserPlatformServices implements PlatformServices {
   async initialize(): Promise<void> {
@@ -28,7 +28,7 @@ export class BrowserPlatformServices implements PlatformServices {
     await this.exportJson(value, filename);
   }
 
-  async exportJson(value: unknown, filename: string): Promise<void> {
+  async exportJson(value: unknown, filename: string): Promise<ExportJsonResult> {
     if (typeof document === "undefined" || typeof URL === "undefined") {
       throw new Error("File export is not available in this runtime.");
     }
@@ -42,6 +42,7 @@ export class BrowserPlatformServices implements PlatformServices {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+    return { status: "saved", filename };
   }
 
   async pickTextFile(): Promise<PickedTextFile | null> {

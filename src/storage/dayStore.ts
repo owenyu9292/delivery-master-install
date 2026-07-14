@@ -43,7 +43,7 @@ export interface BackupFile {
 }
 
 export interface ImportOptions {
-  mode: "preview" | "copy" | "overwrite";
+  mode: "preview" | "copy" | "skip" | "overwrite";
 }
 
 export interface ImportResult {

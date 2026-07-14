@@ -132,6 +132,10 @@ export async function recoverPhoneInstall(
     return overwriteBackupImport(dayStore, request.file);
   }
 
+  if (mode === "skip") {
+    return dayStore.importBackup(request.file, { mode: "skip" });
+  }
+
   return previewBackupImport(dayStore, request.file);
 }
 
@@ -182,7 +186,7 @@ function buildSafetyRules(): string[] {
 function buildRecoveryPanel(): PhoneInstallRecoveryPanel {
   return {
     title: "Recovery",
-    allowedModes: ["preview", "copy", "overwrite"],
+    allowedModes: ["preview", "copy", "skip", "overwrite"],
     safetyRules: [
       "Preview first when the target state is unclear.",
       "Copy mode must never overwrite existing dates.",

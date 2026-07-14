@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { BrowserPlatformServices } from "../src/platform/browserPlatform";
+import { CapacitorPlatformServices } from "../src/platform/capacitorPlatform";
+import type { DocumentFilePluginContract } from "../src/platform/nativeDocumentPlugin";
 
 type MockFile = { name: string; text(): Promise<string> };
 
@@ -117,7 +119,8 @@ try {
 
   await platform.copyText("copied");
 
-  await platform.exportJson({ ok: true }, "backup.json");
+  const exportResult = await platform.exportJson({ ok: true }, "backup.json");
+  assert.deepEqual(exportResult, { status: "saved", filename: "backup.json" });
   assert.equal(clickedLinks.length, 1);
   assert.equal(clickedLinks[0]?.download, "backup.json");
   assert.equal(linkClicks.length, 1);
@@ -134,6 +137,35 @@ try {
   assert.deepEqual(deletedCaches, ["cache-a", "cache-b"]);
   assert.match(replacedUrl, /^https:\/\/example\.test\/app\?app-refresh=\d+$/);
 
+  let openResult: Awaited<ReturnType<DocumentFilePluginContract["openJson"]>> = {
+    canceled: false,
+    name: "native-backup.json",
+    text: "{\"native\":true}",
+    uri: "content://documents/native-backup.json",
+  };
+  const nativePlugin: DocumentFilePluginContract = {
+    async saveJson(options) {
+      assert.equal(options.filename, "native-export.json");
+      assert.equal(options.text, '{\n  "native": true\n}');
+      return { canceled: false, uri: "content://documents/native-export.json" };
+    },
+    async openJson() {
+      return openResult;
+    },
+  };
+  const nativePlatform = new CapacitorPlatformServices(nativePlugin);
+  assert.deepEqual(
+    await nativePlatform.exportJson({ native: true }, "native-export.json"),
+    { status: "saved", filename: "native-export.json", uri: "content://documents/native-export.json" },
+  );
+  assert.deepEqual(
+    await nativePlatform.pickTextFile(),
+    { name: "native-backup.json", text: '{"native":true}' },
+  );
+  openResult = { canceled: true };
+  assert.equal(await nativePlatform.pickTextFile(), null);
+  openResult = { canceled: false, name: "broken.json" };
+  await assert.rejects(() => nativePlatform.pickTextFile(), /JSON 파일을 읽지 못했습니다/);
   console.log("platform tests passed");
 } finally {
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: originalGlobals.navigator });

@@ -1,3 +1,15 @@
+## 2026-07-14 v32 파일 저장·가져오기 전면 보강
+- Android 수동 백업 내보내기를 캐시+공유창에서 `ACTION_CREATE_DOCUMENT` 파일 저장창으로 교체했다.
+- Android 백업 가져오기를 HTML 파일 입력에서 `ACTION_OPEN_DOCUMENT` 문서 선택창으로 교체했다.
+- JSON MIME 외 `text/json`, `text/plain`, `application/octet-stream` 제공자도 선택할 수 있게 했다.
+- 취소/읽기 실패/손상 구조/중복 날짜를 저장 전에 차단하고 모든 작업 버튼에 중복 탭 방지와 공통 오류 표시를 추가했다.
+- 업무 종료는 외부 공유창을 띄우지 않고 내부 전체 스냅샷을 남기며 최신 5개만 순환 보관한다.
+- 기존 날짜 보존 복구는 가짜 `__copy_` 날짜를 만들지 않고 없는 날짜만 가져오는 `skip` 모드로 변경했다.
+- 도우미 기록을 구역으로 복구할 때 시작 시각을 청량리 도착·이전 구역 완료 이후로 보정했다.
+- 앱 `0.2.31-android-install`, cache `v32`, Android versionCode `5`.
+- 검증: `npm run check` 61/61, 플랫폼/SQLite/런타임 통과, Fold 411x762 브라우저 및 대체배송 복합 경로 통과, Android assembleDebug 성공.
+- APK SHA-256: `EEA1B69460F0902BFECB4DEC1300B5A04295E9A03B44C8E252D185A8C80F25B8`.
+
 ## 2026-07-13 운영 규칙 고정
 
 - `OPERATING_RULES.md`를 추가해 Android 인스톨 앱 단일 수정 대상, PWA/season2 보호, 루나 우선 하위 작업, GitHub APK 다운로드 배포를 현재 기준으로 고정했다.

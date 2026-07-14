@@ -138,12 +138,24 @@ function render(): void {
   `;
 
   root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
-    button.addEventListener("click", () => void handleAction(button));
+    button.addEventListener("click", () => void runButtonAction(button));
   });
   bindNumericLimits();
   bindStatsDateInput();
 }
 
+async function runButtonAction(button: HTMLButtonElement): Promise<void> {
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    await handleAction(button);
+  } catch (error) {
+    console.error("Action failed", error);
+    toast(error instanceof Error ? error.message : "작업을 완료하지 못했습니다. 다시 시도하세요.");
+  } finally {
+    button.disabled = false;
+  }
+}
 function renderTabs(): string {
   const tabs: Array<{ key: AppTab; label: string }> = [
     { key: "work", label: "업무" },
@@ -1830,7 +1842,7 @@ function renderImportFeedback(): string {
         <li>가져온 기록: ${lastImportFeedback.importedCount}일 (${escapeHtml(imported)})</li>
         <li>복사/건너뜀: ${lastImportFeedback.skippedCount}일 (${escapeHtml(skipped)})</li>
         <li>사전 스냅샷: ${lastImportFeedback.snapshotCreated ? "생성됨" : "없음"}</li>
-        <li>백업 파일: ${lastImportFeedback.backupExported ? "내보내기 시도됨" : "없음"}</li>
+        <li>내부 보호 스냅샷: ${lastImportFeedback.backupExported ? "저장됨" : "없음"}</li>
         ${lastImportFeedback.activeDate ? `<li>현재 표시 날짜: ${escapeHtml(lastImportFeedback.activeDate)}</li>` : ""}
       </ul>
     </aside>
@@ -1916,8 +1928,12 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   }
   if (action === "snapshot") {
     const backup = await store.createBackup({ kind: "all" });
-    await platform.exportJson(backup, buildBackupFilename("manual"));
-    toast("백업 파일 내보내기를 시작했습니다.");
+    const result = await platform.exportJson(backup, buildBackupFilename("manual"));
+    if (result.status === "cancelled") {
+      toast("백업 저장을 취소했습니다.");
+    } else {
+      toast("백업 JSON 파일을 저장했습니다.");
+    }
     return;
   }
   if (action === "import-field-backup") {
@@ -2104,8 +2120,8 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     addUnpaidHelperEvent(closeAt);
     addEvent("day_close", undefined, closeAt);
     await saveAndRender();
-    await downloadFullBackup(PHONE_INSTALL_BACKUP_FILENAME);
-    toast("업무 종료 저장 완료. 전체 백업 내보내기를 시작했습니다.");
+    await savePreparedSnapshot("day-close", { kind: "all" });
+    toast("업무 종료와 내부 자동 백업을 완료했습니다.");
     return;
   }
   if (action === "close-day") {
@@ -2113,8 +2129,8 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     if (isUnpaidHelperDay(currentDay)) addUnpaidHelperEvent(closeAt);
     addEvent("day_close", undefined, closeAt);
     await saveAndRender();
-    await downloadFullBackup(PHONE_INSTALL_BACKUP_FILENAME);
-    toast("업무 종료 저장 완료. 전체 백업 내보내기를 시작했습니다.");
+    await savePreparedSnapshot("day-close", { kind: "all" });
+    toast("업무 종료와 내부 자동 백업을 완료했습니다.");
     return;
   }
 
@@ -2770,8 +2786,17 @@ async function restoreHelperToZone(helperId?: string): Promise<void> {
   const zoneName = getRestoredZoneName(target);
   if (!confirm(`${helper.name} ${quantity}개를 ${zoneName} 구역 기록으로 복구할까요? 복구 전 백업을 먼저 만듭니다.`)) return;
   await savePreparedSnapshot("helper-restore-before", { kind: "date", date: currentDay.date });
-  const startAt = addMinutes(event.at, -5);
   const endAt = event.at;
+  const proposedStartAt = addMinutes(endAt, -5);
+  const arriveAt = currentDay.timeline.find((candidate) => candidate.type === "arrive_cheongnyangni")?.at;
+  const previousEndAt = currentDay.timeline
+    .filter((candidate) => candidate.type === "zone_end" && !isAfter(candidate.at, endAt))
+    .map((candidate) => candidate.at)
+    .sort((left, right) => right.localeCompare(left))[0];
+  const lowerBound = [arriveAt, previousEndAt]
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => right.localeCompare(left))[0];
+  const startAt = lowerBound && isBefore(proposedStartAt, lowerBound) ? lowerBound : proposedStartAt;
   currentDay = {
     ...currentDay,
     timeline: currentDay.timeline.filter((candidate) => !linkedIds.has(candidate.id)),
@@ -3414,10 +3439,10 @@ async function importPhoneInstallBackupFile(): Promise<void> {
 
     const overwrite = existingDates.length > 0
       ? confirm(
-        `이미 있는 날짜가 있습니다.\n\n${existingDates.join(", ")}\n\n확인: 기존 날짜 덮어쓰기\n취소: 복사본으로 가져오기`,
+        `이미 있는 날짜가 있습니다.\n\n${existingDates.join(", ")}\n\n확인: 기존 날짜 덮어쓰기\n취소: 기존 날짜는 유지하고 없는 날짜만 가져오기`,
       )
       : false;
-    const mode = overwrite ? "overwrite" : "copy";
+    const mode = overwrite ? "overwrite" : "skip";
 
     const beforeBackup = await store.createBackup({ kind: "all" });
     await platform.saveJsonSnapshot(beforeBackup, buildBackupFilename(`before-phone-${mode}`));
@@ -3438,7 +3463,7 @@ async function importPhoneInstallBackupFile(): Promise<void> {
       skippedDates: result.skipped.map((item) => `${item.date}: ${item.reason}`),
       message: mode === "overwrite"
         ? "개발앱 백업을 기존 날짜에 덮어써 복구했습니다."
-        : "개발앱 백업을 복사본 우선으로 가져왔습니다.",
+        : "기존 날짜는 유지하고 없는 날짜만 가져왔습니다.",
       snapshotCreated: true,
       backupExported: true,
       activeDate: currentDay?.date,
@@ -3522,10 +3547,6 @@ async function loadCorrectionDate(): Promise<void> {
 }
 
 
-async function downloadFullBackup(filename: string): Promise<void> {
-  const backup = await store.createBackup({ kind: "all" });
-  await platform.exportJson(backup, filename);
-}
 
 async function savePreparedSnapshot(
   label: string,

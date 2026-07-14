@@ -1,3 +1,14 @@
+# v32 현재 운영 기준 (2026-07-14)
+
+- 정식앱: Android 인스톨판. PWA/season2는 수정 금지 원본 보관.
+- 현재: 앱 `0.2.31-android-install`, cache `v32`, Android versionCode `5`.
+- APK: `downloads/DeliveryMaster-v32-debug.apk`.
+- Android 백업 내보내기는 공유가 아니라 시스템 파일 저장창이다.
+- Android 백업 가져오기는 시스템 문서 선택창이며 앱 목록이 뜨면 정상 동작이 아니다.
+- 기존 날짜 충돌: 확인은 덮어쓰기, 취소는 기존 날짜 유지+없는 날짜만 가져오기다. 신규 `__copy_` 날짜를 만들지 않는다.
+- 자동 내부 스냅샷은 최신 5개만 순환 보관한다.
+- 실기기 파일 왕복 검수 1회가 남아 있다.
+
 # v31 현재 운영 기준 (2026-07-13)
 
 > **고정 규칙:** `OPERATING_RULES.md`가 이 문서의 과거 PWA·USB·GitHub Pages 기록보다 우선한다.

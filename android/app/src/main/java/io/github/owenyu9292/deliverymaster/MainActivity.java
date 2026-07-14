@@ -13,6 +13,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(DocumentFilePlugin.class);
         super.onCreate(savedInstanceState);
 
         // Android 15+ renders edge-to-edge. Keep controls clear of system bars.

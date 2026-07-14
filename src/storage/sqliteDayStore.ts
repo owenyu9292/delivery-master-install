@@ -92,6 +92,25 @@ export class SqliteDayStore implements DayStore {
         else imported.push(createDateSummary(day));
         continue;
       }
+      if (existing && options.mode === "skip") {
+
+        skipped.push({
+
+          date: day.date,
+
+          reason: "existing_day_preserved",
+
+          existingUpdatedAt: existing.meta.updatedAt,
+
+          incomingUpdatedAt: day.meta.updatedAt,
+
+        });
+
+        continue;
+
+      }
+
+
       if (existing && options.mode === "copy") {
         const copy = createBackupCopyDay(day);
         await this.saveDay(copy);
