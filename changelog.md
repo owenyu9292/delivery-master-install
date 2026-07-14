@@ -1,3 +1,14 @@
+# 2026-07-14 v32 Android 백업 입출력 마감
+
+- 네이티브 Android 파일 저장/열기 경로로 JSON 내보내기·가져오기를 분리했다.
+- 기존 날짜 보존 모드에서는 중복 날짜를 건너뛰고 없는 날짜만 가져오도록 고정했다.
+- 손상 JSON, 중복 날짜, 취소, 덮어쓰기, 보존, SQLite 재조회 검수를 통과했다.
+- 실기기에서 저장창과 문서 선택창 동작을 확인했다.
+- v32 APK를 GitHub Release 자산으로 게시했다.
+- 모바일 사용자에게는 직접 APK/raw 링크 대신 Release 페이지를 제공하도록 운영 규칙을 변경했다.
+- Release: https://github.com/owenyu9292/delivery-master-install/releases/tag/v32
+- 커밋: `9e0a7b8 Fix Android backup import and export flow`
+
 ## 2026-07-14 v32 파일 저장·가져오기 전면 보강
 - Android 수동 백업 내보내기를 캐시+공유창에서 `ACTION_CREATE_DOCUMENT` 파일 저장창으로 교체했다.
 - Android 백업 가져오기를 HTML 파일 입력에서 `ACTION_OPEN_DOCUMENT` 문서 선택창으로 교체했다.
