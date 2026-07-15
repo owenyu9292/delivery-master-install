@@ -1,3 +1,14 @@
+# v33 현재 운영 기준 (2026-07-15)
+
+- 정식앱: Android 인스톨판. PWA/season2는 수정 금지 원본 보관.
+- 현재: 앱 0.2.32-android-install, cache v33, Android versionCode 6.
+- 추가구역 오입력: 시작 로그만 있으면 잘못 추가함 · 취소로 내부 스냅샷 후 복귀한다.
+- 정리·배송·수량·이벤트·도우미 기록이 생기면 단순 취소하지 않고 기록 정정을 사용한다.
+- 필수 검수: 종료 직전 오입력, 중간 취소·재추가, 반복 대체배송, 후속 기록별 취소 차단.
+- APK: downloads/DeliveryMaster-v33-debug.apk.
+- SHA256: 2A7AD1533E204D8D37FE26A965F1BA6F36FD37ABC8E6F5D3FEEA3E6FD0DF858B.
+- 배포 페이지: https://github.com/owenyu9292/delivery-master-install/releases/tag/v33
+
 # v32 현재 운영 기준 (2026-07-14)
 
 - 정식앱: Android 인스톨판. PWA/season2는 수정 금지 원본 보관.

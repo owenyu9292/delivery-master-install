@@ -1,4 +1,4 @@
-﻿const base = process.env.SMOKE_BASE || "http://localhost:4173";
+const base = process.env.SMOKE_BASE || "http://localhost:4173";
 const cdpPort = Number(process.env.CDP_PORT || 9223);
 const phoneViewport = {
   width: Number(process.env.SMOKE_WIDTH || 411),
@@ -51,6 +51,16 @@ async function evaluate(expression) {
 
 async function wait(ms = 350) {
   await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForSelector(selector, timeoutMs = 8000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const found = await evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
+    if (found) return true;
+    await wait(150);
+  }
+  throw new Error(`화면 준비 시간 초과: ${selector} / ${(await bodyText()).slice(0, 500)}`);
 }
 
 async function click(selector) {
@@ -117,6 +127,58 @@ async function addAlternateNow() {
   await wait(500);
 }
 
+async function cancelEmptyExtraZone() {
+  const id = await evaluate(`(() => {
+    const button = document.querySelector('[data-action="cancel-empty-extra-zone"]');
+    return button?.dataset.zone || "";
+  })()`);
+  if (!id) throw new Error("기록 없는 추가구역 취소 버튼을 찾지 못했습니다.");
+  await click(`[data-action="cancel-empty-extra-zone"][data-zone="${id}"]`);
+  await wait(600);
+  return id;
+}
+
+async function assertEmptyExtraCancelVisible(expected) {
+  const visible = await evaluate(`Boolean(document.querySelector('[data-action="cancel-empty-extra-zone"]'))`);
+  if (visible !== expected) throw new Error(`추가구역 취소 버튼 표시가 예상과 다릅니다: ${visible}`);
+}
+
+async function addIncidentToCurrentZone() {
+  await setValue("#event-minutes", "5");
+  const added = await click('[data-action="add-event"]');
+  if (!added) throw new Error("추가구역 이벤트를 기록하지 못했습니다.");
+  await wait(500);
+}
+
+async function startCurrentDeliveryOnly() {
+  const id = await findCurrentZoneId();
+  if (!id || id === "miju") throw new Error(`배송 시작 대상 추가구역을 찾지 못했습니다: ${id}`);
+  const started = await click(`[data-action="delivery-start"][data-zone="${id}"]`);
+  if (!started) throw new Error("바로 배송 시작 버튼을 누르지 못했습니다.");
+  await wait(500);
+}
+
+async function startCurrentSortingOnly() {
+  const id = await findCurrentZoneId();
+  if (!id || id === "miju") throw new Error(`정리 시작 대상 추가구역을 찾지 못했습니다: ${id}`);
+  const started = await click(`[data-action="sorting-start"][data-zone="${id}"]`);
+  if (!started) throw new Error("정리 시작 버튼을 누르지 못했습니다.");
+  await wait(500);
+}
+
+async function finishCurrentSorting() {
+  const id = await evaluate(`document.querySelector('[data-action="sorting-end"]')?.dataset.zone || ""`);
+  const ended = await click(`[data-action="sorting-end"][data-zone="${id}"]`);
+  if (!ended) throw new Error("정리 완료 버튼을 누르지 못했습니다.");
+  await wait(500);
+}
+
+async function addHelperToCurrentZone() {
+  const added = await click('[data-action="add-helper-free"]');
+  if (!added) throw new Error("추가구역 도우미 기록을 남기지 못했습니다.");
+  await wait(500);
+}
+
 async function skipVisibleExtraZone() {
   const id = await evaluate(`(() => {
     const button = document.querySelector('[data-action="skip-zone"]');
@@ -136,7 +198,7 @@ async function closeDayIfReady() {
 
 async function startVisibleZone(name) {
   const id = await findStartButtonByName(name);
-  if (!id) throw new Error(`${name} 시작 버튼을 찾지 못했습니다.`);
+  if (!id) throw new Error(`${name} 시작 버튼을 찾지 못했습니다. 화면: ${(await bodyText()).slice(0, 700)}`);
   await click(`[data-action="zone-start"][data-zone="${id}"]`);
   await wait(350);
   return id;
@@ -170,14 +232,12 @@ async function completeGeneric(cumulativeTotal) {
 async function resetAndStart(expected = 300) {
   await send("Storage.clearDataForOrigin", { origin: base, storageTypes: "all" });
   await send("Page.navigate", { url: base });
-  await wait(900);
-  await setValue("#expected-count", String(expected));
-  await click('[data-action="depart"]');
-  await wait(350);
-  await click('[data-action="arrive"]');
-  await wait(350);
-  await click('[data-action="prepare-default-order"]');
-  await wait(500);
+  await waitForSelector("#expected-count");
+  if (!await setValue("#expected-count", String(expected))) throw new Error("예상 수량 입력 실패");
+  if (!await click('[data-action="depart"]')) throw new Error("출발 기록 버튼 클릭 실패");
+  await waitForSelector('[data-action="arrive"]');
+  if (!await click('[data-action="arrive"]')) throw new Error("도착 기록 버튼 클릭 실패");
+  await waitForSelector(".order-editor");
 }
 
 async function summary() {
@@ -194,6 +254,20 @@ async function runScenario(name, steps) {
       await moveZoneToTop(step.name);
     } else if (step.kind === "addAlt") {
       await addAlternateNow();
+    } else if (step.kind === "cancelEmptyExtra") {
+      await cancelEmptyExtraZone();
+    } else if (step.kind === "assertCancelVisible") {
+      await assertEmptyExtraCancelVisible(step.expected);
+    } else if (step.kind === "addIncident") {
+      await addIncidentToCurrentZone();
+    } else if (step.kind === "startDeliveryOnly") {
+      await startCurrentDeliveryOnly();
+    } else if (step.kind === "startSortingOnly") {
+      await startCurrentSortingOnly();
+    } else if (step.kind === "finishSorting") {
+      await finishCurrentSorting();
+    } else if (step.kind === "addHelper") {
+      await addHelperToCurrentZone();
     } else if (step.kind === "start") {
       await startVisibleZone(step.name);
     } else if (step.kind === "completeMiju") {
@@ -208,7 +282,7 @@ async function runScenario(name, steps) {
     records.push(await bodyText());
   }
   const text = await bodyText();
-  return { name, ok: true, text, summary: await summary(), records };
+  return { name, ok: true, text, summary: await summary(), records, expectAltRepeat: steps.filter((step) => step.kind === "addAlt").length >= 2 };
 }
 
 await send("Page.enable");
@@ -278,10 +352,89 @@ scenarios.push(await runScenario("today-alt-alt-alt-miju-hils", [
   { kind: "closeDay" },
 ]));
 
+scenarios.push(await runScenario("end-of-day-mistap-cancel-close", [
+  { kind: "start", name: "미주" },
+  { kind: "completeMiju", total: 30, detail: [3, 4, 5] },
+  { kind: "start", name: "힐스테이트" },
+  { kind: "completeGeneric", total: 60 },
+  { kind: "skipExtra" },
+  { kind: "addAlt" },
+  { kind: "assertCancelVisible", expected: true },
+  { kind: "cancelEmptyExtra" },
+  { kind: "closeDay" },
+]));
+
+scenarios.push(await runScenario("between-zones-cancel-readd", [
+  { kind: "start", name: "미주" },
+  { kind: "completeMiju", total: 30, detail: [3, 4, 5] },
+  { kind: "addAlt" },
+  { kind: "cancelEmptyExtra" },
+  { kind: "addAlt" },
+  { kind: "completeGeneric", total: 45 },
+  { kind: "start", name: "힐스테이트" },
+  { kind: "completeGeneric", total: 70 },
+  { kind: "skipExtra" },
+  { kind: "closeDay" },
+]));
+
+scenarios.push(await runScenario("delivery-record-blocks-cancel", [
+  { kind: "start", name: "미주" },
+  { kind: "completeMiju", total: 30, detail: [3, 4, 5] },
+  { kind: "addAlt" },
+  { kind: "assertCancelVisible", expected: true },
+  { kind: "startDeliveryOnly" },
+  { kind: "assertCancelVisible", expected: false },
+  { kind: "completeGeneric", total: 45 },
+  { kind: "start", name: "힐스테이트" },
+  { kind: "completeGeneric", total: 70 },
+  { kind: "skipExtra" },
+  { kind: "closeDay" },
+]));
+
+scenarios.push(await runScenario("incident-record-blocks-cancel", [
+  { kind: "start", name: "미주" },
+  { kind: "completeMiju", total: 30, detail: [3, 4, 5] },
+  { kind: "addAlt" },
+  { kind: "addIncident" },
+  { kind: "assertCancelVisible", expected: false },
+  { kind: "completeGeneric", total: 45 },
+  { kind: "start", name: "힐스테이트" },
+  { kind: "completeGeneric", total: 70 },
+  { kind: "skipExtra" },
+  { kind: "closeDay" },
+]));
+
+scenarios.push(await runScenario("sorting-record-blocks-cancel", [
+  { kind: "start", name: "미주" },
+  { kind: "completeMiju", total: 30, detail: [3, 4, 5] },
+  { kind: "addAlt" },
+  { kind: "startSortingOnly" },
+  { kind: "assertCancelVisible", expected: false },
+  { kind: "finishSorting" },
+  { kind: "completeGeneric", total: 45 },
+  { kind: "start", name: "힐스테이트" },
+  { kind: "completeGeneric", total: 70 },
+  { kind: "skipExtra" },
+  { kind: "closeDay" },
+]));
+
+scenarios.push(await runScenario("helper-record-blocks-cancel", [
+  { kind: "start", name: "미주" },
+  { kind: "completeMiju", total: 30, detail: [3, 4, 5] },
+  { kind: "addAlt" },
+  { kind: "addHelper" },
+  { kind: "assertCancelVisible", expected: false },
+  { kind: "completeGeneric", total: 45 },
+  { kind: "start", name: "힐스테이트" },
+  { kind: "completeGeneric", total: 70 },
+  { kind: "skipExtra" },
+  { kind: "closeDay" },
+]));
+
 const checks = scenarios.map((scenario) => ({
   name: scenario.name,
   hasAllDone: scenario.text.includes("완료"),
-  hasAltRepeat: /대체배송 2|대체배송 3/.test(scenario.text),
+  hasAltRepeat: !scenario.expectAltRepeat || /대체배송 2|대체배송 3/.test(scenario.text),
   hasNoNaN: !scenario.text.includes("NaN"),
   hasNoNegativeQuantity: !/수량 -\\d+개/.test(scenario.text),
   hasNoWaitingAltAtEnd: !scenario.summary.includes("대체배송 | 대기"),

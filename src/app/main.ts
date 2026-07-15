@@ -1490,6 +1490,10 @@ function renderGenericZoneWorkStep(
     <section class="panel focus">
       <p class="step">${options.step}</p>
       <h2>${options.title}</h2>
+      ${canCancelEmptyStartedExtraZone(zoneId) ? `
+        <button class="secondary" data-action="cancel-empty-extra-zone" data-zone="${zoneId}">잘못 추가함 · 취소</button>
+        <p class="hint">아직 작업 기록이 없을 때만 취소할 수 있습니다.</p>
+      ` : ""}
       ${!sortingStarted && !deliveryStarted ? `
         <div class="field-actions">
           <button data-action="sorting-start" data-zone="${zoneId}">정리 시작</button>
@@ -2012,6 +2016,10 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     await saveAndRender();
     return;
   }
+  if (action === "cancel-empty-extra-zone" && zoneId) {
+    await cancelEmptyStartedExtraZone(zoneId);
+    return;
+  }
   if (action === "add-event") {
     addIncidentEvent();
     await saveAndRender();
@@ -2237,6 +2245,35 @@ function skipZone(zoneId: string): void {
   if (!currentDay || hasZoneStarted(zoneId)) return;
   currentDay.zones = currentDay.zones.filter((zone) => zone.id !== zoneId);
   normalizeZoneOrders();
+}
+
+function canCancelEmptyStartedExtraZone(zoneId: string): boolean {
+  if (!currentDay || !isExtraZone(zoneId) || hasZoneEnded(zoneId)) return false;
+  const zoneEvents = currentDay.timeline.filter((event) => event.zoneId === zoneId);
+  if (zoneEvents.length !== 1 || zoneEvents[0]?.type !== "zone_start") return false;
+  return !currentDay.timeline.some((event) => {
+    const payload = event.payload as { sourceZoneId?: unknown } | undefined;
+    return payload?.sourceZoneId === zoneId;
+  });
+}
+
+async function cancelEmptyStartedExtraZone(zoneId: string): Promise<void> {
+  if (!currentDay) return;
+  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
+  if (!zone || !canCancelEmptyStartedExtraZone(zoneId)) {
+    toast("이미 작업 기록이 있어 취소할 수 없습니다. 기록 정정에서 수정하세요.");
+    return;
+  }
+  if (!confirm(`${zone.name} 추가를 취소하고 이전 단계로 돌아갈까요?`)) return;
+  await savePreparedSnapshot("extra-zone-cancel-before", { kind: "date", date: currentDay.date });
+  currentDay = {
+    ...currentDay,
+    timeline: currentDay.timeline.filter((event) => event.zoneId !== zoneId),
+    zones: currentDay.zones.filter((candidate) => candidate.id !== zoneId),
+  };
+  normalizeZoneOrders();
+  toast(`${zone.name} 추가를 취소했습니다.`);
+  await saveAndRender();
 }
 
 function moveZone(zoneId: string, direction: -1 | 1): void {
