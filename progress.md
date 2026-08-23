@@ -1,3 +1,29 @@
+# 2026-08-23 로그 현장 정정 보강
+
+## 승인 범위
+
+- 로그에서 시간축 조건 때문에 저장이 막혀 자료가 오염되는 문제를 설치판에서 수정한다.
+- PWA/season2와 현장용 원본은 수정하지 않는다.
+
+## 반영한 코드
+
+- 'src/app/main.ts': 로그 연필 저장 경로에서 시간축 차단을 제거하고 경고를 adjustments에 기록한다.
+- 'src/app/main.ts': 누락된 sorting_end를 로그에 가상 항목으로 표시해 실제 시각을 추가할 수 있게 한다.
+- 'src/app/main.ts': 로그 완료 수량에 0과 5자리 입력을 허용하고 빈 입력만 차단한다.
+- 'src/app/version.ts': v34 / 0.2.33-android-install로 올렸다.
+
+## 현재 상태
+
+- 코드 반영: 완료
+- 문서 반영: 완료
+- npm run check: 통과 (61/61 domain, platform, SQLite, runtime)
+- npm run build: 통과
+- 임시 Chrome 411x762 / DPR 2.63: 기존 smoke/alt stress 통과
+- 임시 CDP 현장 정정: 누락 정리 완료 추가, 시간 역전 저장+경고, 0개 저장, 99999개 반복 수정 통과
+- Fold7 실기기 검수와 v34 APK 배포: 대기
+- Android versionCode 7 / versionName 0.2.33으로 v34 debug APK를 빌드했다.
+- APK: downloads/DeliveryMaster-v34-debug.apk · SHA-256 497AAFB83D3412943E4C0A4D2030D4473DB9C6AE3BC2A7A3120A837889959B23
+
 # 2026-07-15 추가구역 오입력 안전 취소 작업 시작
 
 - 기록자: 일반 작업창 / 채널: main

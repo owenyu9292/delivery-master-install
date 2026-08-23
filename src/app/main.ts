@@ -84,6 +84,7 @@ type LogEditKind =
   | "delivery_start"
   | "sorting_start"
   | "sorting_end"
+  | "missing_sorting_end"
   | "zone_end"
   | "incident"
   | "helper";
@@ -922,6 +923,20 @@ function buildLogEntriesForDay(dayRecord: DayRecord, calculation: DayCalculation
       });
     } else if (event.type === "sorting_start") {
       entries.push({ ...baseEntry, title: "정리 시작", detail: buildMovementDetail(zoneCalc), kind: "sorting" });
+      if (event.zoneId && !dayRecord.timeline.some((candidate) => candidate.zoneId === event.zoneId && candidate.type === "sorting_end")) {
+        const missingEditId = `missing-sorting-end-${event.zoneId}`;
+        if (!entries.some((entry) => entry.eventId === missingEditId)) {
+          entries.push({
+            eventId: missingEditId,
+            title: "정리 완료 누락",
+            time: "-",
+            detail: `${zoneName ?? "구역"} 정리 완료 시각을 로그에서 직접 추가할 수 있습니다.`,
+            kind: "sorting",
+            editable: true,
+            editKind: "missing_sorting_end",
+          });
+        }
+      }
     } else if (event.type === "sorting_end") {
       entries.push({ ...baseEntry, title: "정리 완료", detail: `정리: ${formatMin(zoneCalc?.sortingMinutes)}`, kind: "sorting" });
     } else if (event.type === "zone_end") {
@@ -968,6 +983,9 @@ function renderLogEntry(entry: LogViewEntry): string {
 
 function renderLogInlineEditor(eventId: string, editKind?: LogEditKind): string {
   if (!currentDay) return "";
+  if (editKind === "missing_sorting_end") {
+    return renderMissingSortingEndEditor(eventId);
+  }
   const event = currentDay.timeline.find((candidate) => candidate.id === eventId);
   if (!event || !editKind) return "";
 
@@ -979,7 +997,7 @@ function renderLogInlineEditor(eventId: string, editKind?: LogEditKind): string 
     const total = typeof payload?.total === "number" ? String(payload.total) : "";
     return renderLogEventTimeEditor(event, "진접 출발 수정", "출발 시각과 예상 수량을 함께 바로잡습니다.", `
         <label>예상 수량
-          <input id="${escapeAttribute(`${baseId}-total`)}" type="text" inputmode="numeric" maxlength="4" data-numeric-limit="4" value="${escapeAttribute(total)}">
+          <input id="${escapeAttribute(`${baseId}-total`)}" type="text" inputmode="numeric" maxlength="5" data-numeric-limit="5" value="${escapeAttribute(total)}">
         </label>
       `, "출발 시각");
   }
@@ -989,19 +1007,19 @@ function renderLogInlineEditor(eventId: string, editKind?: LogEditKind): string 
   }
 
   if (editKind === "zone_start") {
-    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 시작 수정`, "구역 시작 시각을 고치면 앞뒤 구역 순서 검사도 같이 거칩니다.", "", "구역 시작 시각");
+    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 시작 수정`, "로그 현장 정정은 입력값을 우선 저장하고 시간축 경고는 정정 이력에 남깁니다.", "", "구역 시작 시각");
   }
 
   if (editKind === "delivery_start") {
-    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 배송 시작 수정`, "배송 시작 시각을 고치면 실제 배송 시간과 효율이 다시 계산됩니다.", "", "배송 시작 시각");
+    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 배송 시작 수정`, "로그 현장 정정은 입력값을 우선 저장하고 실제 시간·효율을 다시 계산합니다.", "", "배송 시작 시각");
   }
 
   if (editKind === "sorting_start") {
-    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 정리 시작 수정`, "정리 시작 시각을 고치면 구역 원본 timeline이 함께 수정됩니다.", "", "정리 시작 시각");
+    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 정리 시작 수정`, "로그 현장 정정은 입력값을 우선 저장하고 정리 시간을 다시 계산합니다.", "", "정리 시작 시각");
   }
 
   if (editKind === "sorting_end") {
-    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 정리 완료 수정`, "정리 완료 시각을 고치면 정리 시간이 다시 계산됩니다.", "", "정리 완료 시각");
+    return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 정리 완료 수정`, "로그 현장 정정은 시간축 조건과 무관하게 저장하고 정리 시간을 다시 계산합니다.", "", "정리 완료 시각");
   }
 
   if (editKind === "zone_end") {
@@ -1011,17 +1029,17 @@ function renderLogInlineEditor(eventId: string, editKind?: LogEditKind): string 
     return `
       <article class="timeline-inline-editor">
         <strong>${escapeHtml(zoneName ?? "구역")} 완료 수정</strong>
-        <p class="hint">완료 시각과 수량을 바로 고치면 리포트와 통계도 같은 원본에서 다시 계산됩니다.</p>
+        <p class="hint">로그 현장 정정은 시간축·예상수량 조건보다 입력값을 우선합니다. 이상값은 정정 이력에 남기고 리포트와 통계를 다시 계산합니다.</p>
         <div class="log-inline-grid">
           ${renderDigitTimeFields(`${baseId}-time`, "구역 완료 시각", event.at)}
           <label>배송 수량
-            <input id="${escapeAttribute(`${baseId}-delivered`)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${escapeAttribute(delivered)}">
+            <input id="${escapeAttribute(`${baseId}-delivered`)}" type="text" inputmode="numeric" maxlength="5" data-numeric-limit="5" value="${escapeAttribute(delivered)}">
           </label>
           <label>실패
-            <input id="${escapeAttribute(`${baseId}-failed`)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${escapeAttribute(failed)}">
+            <input id="${escapeAttribute(`${baseId}-failed`)}" type="text" inputmode="numeric" maxlength="5" data-numeric-limit="5" value="${escapeAttribute(failed)}">
           </label>
           <label>추가
-            <input id="${escapeAttribute(`${baseId}-extra`)}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${escapeAttribute(extra)}">
+            <input id="${escapeAttribute(`${baseId}-extra`)}" type="text" inputmode="numeric" maxlength="5" data-numeric-limit="5" value="${escapeAttribute(extra)}">
           </label>
         </div>
         ${renderLogEditButtons(event.id)}
@@ -1096,6 +1114,26 @@ function renderLogInlineEditor(eventId: string, editKind?: LogEditKind): string 
   return "";
 }
 
+function renderMissingSortingEndEditor(editKey: string): string {
+  if (!currentDay) return "";
+  const zoneId = editKey.replace(/^missing-sorting-end-/, "");
+  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
+  const sortingStart = latestZoneEvent(zoneId, "sorting_start");
+  const zoneEnd = latestZoneEvent(zoneId, "zone_end");
+  if (!zone || !sortingStart) return "";
+  const baseId = `log-edit-${editKey}`;
+  const suggestedAt = zoneEnd?.at ?? sortingStart.at;
+  return `
+    <article class="timeline-inline-editor">
+      <strong>${escapeHtml(zone.name)} 정리 완료 추가</strong>
+      <p class="hint">정리 완료를 놓친 경우 실제 시각을 바로 추가합니다. 기존 시간축 조건에 막지 않고 현장 정정 이력을 남깁니다.</p>
+      <div class="log-inline-grid">
+        ${renderDigitTimeFields(`${baseId}-time`, "정리 완료 시각", suggestedAt)}
+      </div>
+      ${renderLogEditButtons(editKey)}
+    </article>
+  `;
+}
 function renderLogEventTimeEditor(event: TimelineEvent, title: string, hint: string, extraFields = "", timeLabel = "기록 시각"): string {
   const baseId = `log-edit-${event.id}`;
   return `
@@ -2455,6 +2493,10 @@ async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
 
 async function saveLogEdit(eventId?: string): Promise<void> {
   if (!currentDay || !eventId) return;
+  if (eventId.startsWith("missing-sorting-end-")) {
+    await saveLogMissingSortingEndEdit(eventId);
+    return;
+  }
   const event = currentDay.timeline.find((candidate) => candidate.id === eventId);
   if (!event) {
     activeLogEditEventId = "";
@@ -2488,6 +2530,45 @@ async function saveLogEdit(eventId?: string): Promise<void> {
   await saveLogZoneEventEdit(event);
 }
 
+async function saveLogMissingSortingEndEdit(editKey: string): Promise<void> {
+  if (!currentDay) return;
+  const zoneId = editKey.replace(/^missing-sorting-end-/, "");
+  const zone = currentDay.zones.find((candidate) => candidate.id === zoneId);
+  const sortingStart = latestZoneEvent(zoneId, "sorting_start");
+  if (!zone || !sortingStart) {
+    toast("정리 시작 기록을 찾지 못했습니다.");
+    return;
+  }
+  if (hasZoneEvent(zoneId, "sorting_end")) {
+    toast("정리 완료 기록이 이미 있습니다. 기존 로그의 연필로 수정하세요.");
+    activeLogEditEventId = "";
+    render();
+    return;
+  }
+  const baseId = `log-edit-${editKey}`;
+  const at = readRequiredDigitTimeInput(`${baseId}-time`, "정리 완료 시각", sortingStart.at);
+  if (!at) return;
+  await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
+  currentDay = createEvent(currentDay, {
+    type: "sorting_end",
+    at,
+    zoneId,
+    note: "로그에서 누락된 정리 완료를 현장 정정으로 추가",
+  });
+  linkLatestEvent(zoneId, "sorting_end", "sortingEndEventId");
+  const axisIssue = validateTimeAxis(currentDay)[0];
+  currentDay = withLogInlineAdjustment(
+    currentDay,
+    editKey,
+    "log_inline_missing_sorting_end_add",
+    axisIssue
+      ? `정리 완료 누락 추가 · 시간축 경고: ${axisIssue.message}`
+      : "정리 완료 누락 추가 · 로그 현장 정정",
+  );
+  activeLogEditEventId = "";
+  toast(axisIssue ? "정리 완료를 저장했습니다. 시간 순서는 정정 이력에서 확인하세요." : "정리 완료를 로그에 추가했습니다.");
+  await saveAndRender();
+}
 async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
   if (!currentDay) return;
   const baseId = `log-edit-${event.id}`;
@@ -2496,12 +2577,7 @@ async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
   if (!at) return;
 
   if (event.type === "depart_jinjeop") {
-    const arrive = currentDay.timeline.find((candidate) => candidate.type === "arrive_cheongnyangni");
-    if (isAfter(at, arrive?.at)) {
-      toast("진접 출발은 청량리 도착보다 늦을 수 없습니다.");
-      return;
-    }
-    const totalInput = readLimitedNumberField(`#${baseId}-total`, 4);
+    const totalInput = readLimitedNumberField(`#${baseId}-total`, 5);
     const payload = event.payload && typeof event.payload === "object" ? { ...(event.payload as Record<string, unknown>) } : {};
     if (totalInput.hasValue) {
       payload.total = totalInput.value;
@@ -2510,23 +2586,20 @@ async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
     }
     await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
     currentDay = updateEvent(currentDay, event.id, { at, payload });
-    currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_depart_edit", `진접 출발 ${formatTime(event.at)} -> ${formatTime(at)}`);
   } else {
-    const depart = currentDay.timeline.find((candidate) => candidate.type === "depart_jinjeop");
-    if (isBefore(at, depart?.at)) {
-      toast("청량리 도착은 진접 출발보다 빠를 수 없습니다.");
-      return;
-    }
-    const firstZoneStart = currentDay.timeline.find((candidate) => candidate.type === "zone_start");
-    if (isAfter(at, firstZoneStart?.at)) {
-      toast("청량리 도착은 첫 구역 시작보다 늦을 수 없습니다.");
-      return;
-    }
     await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
     currentDay = updateEvent(currentDay, event.id, { at });
-    currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_arrive_edit", `청량리 도착 ${formatTime(event.at)} -> ${formatTime(at)}`);
   }
 
+  const axisIssue = validateTimeAxis(currentDay)[0];
+  currentDay = withLogInlineAdjustment(
+    currentDay,
+    event.id,
+    event.type === "depart_jinjeop" ? "log_inline_depart_edit" : "log_inline_arrive_edit",
+    axisIssue
+      ? `${event.type} 수정 · 시간축 경고: ${axisIssue.message}`
+      : `${event.type} 수정 · 로그 현장 정정`,
+  );
   activeLogEditEventId = "";
   toast("로그 원본 기록을 저장했습니다.");
   await saveAndRender();
@@ -2576,33 +2649,37 @@ async function saveLogZoneEventEdit(event: TimelineEvent): Promise<void> {
     return;
   }
 
-  const timeError = validateZoneEditTimes(zoneId, { startAt: nextStartAt, deliveryStartAt: nextDeliveryStartAt, endAt: nextEndAt, sortingStartAt: nextSortingStartAt, sortingEndAt: nextSortingEndAt });
-  if (timeError) {
-    toast(timeError);
-    return;
-  }
-
   const updateInput: Parameters<typeof applyCompletedZoneEdit>[1] = { zoneId, reason: "log_inline_zone_edit" };
   if (event.type === "zone_start") updateInput.startAt = nextStartAt;
   if (event.type === "delivery_start") updateInput.deliveryStartAt = nextDeliveryStartAt;
   if (event.type === "sorting_start") updateInput.sortingStartAt = nextSortingStartAt;
   if (event.type === "sorting_end") updateInput.sortingEndAt = nextSortingEndAt;
   if (event.type === "zone_end") {
-    const deliveredInput = readLimitedNumberField(`#${baseId}-delivered`, 3);
-    const delivered = resolveValidatedDelivered(zoneId, deliveredInput.value, deliveredInput.hasValue, { mode: "actual", riskContext: "block" });
-    if (delivered === undefined) return;
+    const deliveredInput = readLimitedNumberField(`#${baseId}-delivered`, 5);
+    if (!deliveredInput.hasValue) {
+      toast("배송 수량을 입력하세요. 0개도 입력할 수 있습니다.");
+      return;
+    }
     updateInput.endAt = nextEndAt;
-    updateInput.delivered = delivered;
-    updateInput.failed = readLimitedNumber(`#${baseId}-failed`, 3);
-    updateInput.extra = readLimitedNumber(`#${baseId}-extra`, 3);
+    updateInput.delivered = deliveredInput.value;
+    updateInput.failed = readLimitedNumber(`#${baseId}-failed`, 5);
+    updateInput.extra = readLimitedNumber(`#${baseId}-extra`, 5);
   }
 
   await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
   currentDay = applyCompletedZoneEdit(currentDay, updateInput);
   ensureDeliveryStartBeforeZoneEnd(zoneId, nextEndAt);
-  currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_zone_edit", `${event.type} 수정`);
+  const axisIssue = validateTimeAxis(currentDay)[0];
+  currentDay = withLogInlineAdjustment(
+    currentDay,
+    event.id,
+    "log_inline_zone_edit",
+    axisIssue
+      ? `${event.type} 수정 · 시간축 경고: ${axisIssue.message}`
+      : `${event.type} 수정 · 로그 현장 정정`,
+  );
   activeLogEditEventId = "";
-  toast("구역 원본 기록을 저장했습니다.");
+  toast(axisIssue ? "로그 정정을 저장했습니다. 시간 순서는 정정 이력에서 확인하세요." : "로그 원본 기록을 저장했습니다.");
   await saveAndRender();
 }
 
