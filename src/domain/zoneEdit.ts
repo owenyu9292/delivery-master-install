@@ -25,7 +25,7 @@ export function applyCompletedZoneEdit(dayRecord: DayRecord, input: CompletedZon
   if (!zone) return dayRecord;
 
   const now = new Date().toISOString();
-  const updates = buildEventUpdates(dayRecord, input);
+  const updates = buildEventUpdates(dayRecord, input, zone);
   if (updates.size === 0) return dayRecord;
 
   const timeline = sortTimeline(dayRecord.timeline.map((event) => {
@@ -65,6 +65,7 @@ export function applyCompletedZoneEdit(dayRecord: DayRecord, input: CompletedZon
 function buildEventUpdates(
   dayRecord: DayRecord,
   input: CompletedZoneEditInput,
+  zone: DayRecord["zones"][number],
 ): Map<string, Partial<TimelineEvent>> {
   const updates = new Map<string, Partial<TimelineEvent>>();
   const start = findZoneEvent(dayRecord, input.zoneId, "zone_start");
@@ -74,11 +75,32 @@ function buildEventUpdates(
   const end = findZoneEvent(dayRecord, input.zoneId, "zone_end");
 
   if (start && input.startAt) updates.set(start.id, { at: input.startAt });
-  if (deliveryStart && input.deliveryStartAt) updates.set(deliveryStart.id, { at: input.deliveryStartAt });
+  const manualDeliveryStartChanged =
+    deliveryStart &&
+    isAutoCorrectedDeliveryStart(deliveryStart) &&
+    input.deliveryStartAt !== undefined &&
+    input.deliveryStartAt !== deliveryStart.at;
+  if (deliveryStart && input.deliveryStartAt) {
+    updates.set(deliveryStart.id, {
+      at: input.deliveryStartAt,
+      ...(manualDeliveryStartChanged ? { payload: clearAutoCorrectionFlag(deliveryStart.payload) } : {}),
+    });
+  }
   if (sortingStart && input.sortingStartAt) updates.set(sortingStart.id, { at: input.sortingStartAt });
-  if (sortingEnd && input.sortingEndAt) updates.set(sortingEnd.id, { at: input.sortingEndAt });
+  if (sortingEnd && input.sortingEndAt) {
+    updates.set(sortingEnd.id, { at: input.sortingEndAt });
+    if (deliveryStart && isAutoCorrectedDeliveryStart(deliveryStart)) {
+      if (!manualDeliveryStartChanged && deliveryStart.at !== input.sortingEndAt) {
+        updates.set(deliveryStart.id, { at: input.sortingEndAt });
+      }
+    }
+  }
   if (end) {
-    const nextPayload = buildZoneEndPayload(end.payload, input);
+    const nextPayload = buildZoneEndPayload(
+      end.payload,
+      input,
+      zone.id === "miju" || zone.name === "미주",
+    );
     const patch: Partial<TimelineEvent> = {};
     if (input.endAt) patch.at = input.endAt;
     if (nextPayload) patch.payload = nextPayload;
@@ -91,6 +113,7 @@ function buildEventUpdates(
 function buildZoneEndPayload(
   payload: TimelineEventPayload | undefined,
   input: CompletedZoneEditInput,
+  isMiju: boolean,
 ): TimelineEventPayload | undefined {
   const previous = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   const failed = input.failed ?? numberOr(previous.failed, 0);
@@ -102,9 +125,21 @@ function buildZoneEndPayload(
     input.mijuRest !== undefined;
   const delivered = hasMijuBuildings
     ? (input.miju1 ?? 0) + (input.miju2 ?? 0) + (input.miju3 ?? 0) + (input.mijuRest ?? 0)
+    : input.delivered !== undefined
+      ? input.delivered
     : input.mijuA !== undefined || input.mijuB !== undefined
       ? (input.mijuA ?? 0) + (input.mijuB ?? 0)
     : input.delivered;
+  const previousA = numberOrOptional(previous.aTotal);
+  const previousB = numberOrOptional(previous.bTotal);
+  const suppliedBChanged = input.mijuB !== undefined && input.mijuB !== previousB;
+  const shouldRecalculateRetainedB =
+    isMiju &&
+    !hasMijuBuildings &&
+    input.delivered !== undefined &&
+    previousA !== undefined &&
+    previousB !== undefined &&
+    !suppliedBChanged;
 
   if (delivered === undefined && input.failed === undefined && input.extra === undefined) {
     return undefined;
@@ -127,9 +162,43 @@ function buildZoneEndPayload(
         }
       : {}),
     ...(input.mijuA !== undefined || input.mijuB !== undefined
-      ? { aTotal: input.mijuA ?? 0, bTotal: input.mijuB ?? 0 }
+      ? shouldRecalculateRetainedB
+        ? retainedMijuBFields(
+            input.mijuA ?? previousA ?? 0,
+            Math.max(0, input.delivered! - (input.mijuA ?? previousA!)),
+            previous,
+          )
+        : {
+            aTotal: input.mijuA ?? previousA ?? 0,
+            bTotal: input.mijuB ?? previousB ?? 0,
+          }
+      : shouldRecalculateRetainedB
+        ? retainedMijuBFields(previousA!, Math.max(0, input.delivered! - previousA!), previous)
       : {}),
   };
+}
+
+function retainedMijuBFields(
+  aTotal: number,
+  bTotal: number,
+  previous: Record<string, unknown>,
+): Record<string, number> {
+  return {
+    aTotal,
+    bTotal,
+    ...(Object.hasOwn(previous, "restTotal") ? { restTotal: bTotal } : {}),
+    ...(Object.hasOwn(previous, "mijuRest") ? { mijuRest: bTotal } : {}),
+  };
+}
+
+function clearAutoCorrectionFlag(payload: TimelineEventPayload | undefined): TimelineEventPayload {
+  return {
+    ...(payload && typeof payload === "object" ? payload : {}),
+    autoCorrected: false,
+  };
+}
+function isAutoCorrectedDeliveryStart(event: TimelineEvent): boolean {
+  return (event.payload as Record<string, unknown> | undefined)?.autoCorrected === true;
 }
 
 function findZoneEvent(
@@ -142,6 +211,10 @@ function findZoneEvent(
 
 function numberOr(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function numberOrOptional(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function createAdjustmentId(dayRecord: DayRecord, now: string): string {

@@ -1,4 +1,5 @@
 import { applyMissingCleanupCorrection, hasMissingCleanupFinish } from "../domain/cleanupCorrection";
+import { DEFAULT_HANDLING_MINUTES, HANDLING_TITLE, findHandlingEvent, isHandlingEvent, readHandlingMinutes, setHandlingMinutes } from "../domain/handlingTime";
 import { applyCompletedZoneEdit } from "../domain/zoneEdit";
 import { createEvent, updateEvent } from "../domain/eventTimeline";
 import { calculateDay } from "../domain/deliveryCalc";
@@ -18,6 +19,7 @@ import {
 import type { ZoneQuantityComparison } from "../ui/uiScreens";
 import { APP_VERSION, SETTINGS_VERSION_LABEL, TOPBAR_VERSION_LABEL } from "./version";
 import { createAppRuntime } from "./appRuntime";
+import { FormDrafts } from "./formDrafts";
 
 const BASE_ZONE_IDS = ["miju", "hils"] as const;
 const MAX_REASONABLE_EXPECTED = 1200;
@@ -47,6 +49,16 @@ let statsSelectedDate = todayKey();
 let activeCorrectionTargetId = "";
 let activeLogEditEventId = "";
 let pendingQuantityRisk: PendingQuantityRisk | null = null;
+const formDrafts = new FormDrafts();
+let renderedFormKey = "";
+let discardDraftOnRender = false;
+let actionInProgress = false;
+let currentAction = "";
+let actionError = "";
+let historyReadErrors: string[] = [];
+let observedToday = todayKey();
+let historicalEditing = false;
+let rolloverChoice = false;
 
 type AppTab = "work" | "log" | "report" | "stats" | "backup";
 type StatsTab = "week" | "month" | "date";
@@ -80,6 +92,7 @@ interface PendingQuantityRisk {
 type LogEditKind =
   | "depart"
   | "arrive"
+  | "day_close"
   | "zone_start"
   | "delivery_start"
   | "sorting_start"
@@ -94,15 +107,60 @@ if (!appRoot) throw new Error("Missing #app root");
 const root: HTMLDivElement = appRoot;
 
 void boot();
+root.addEventListener("input", () => formDrafts.capture(root, renderedFormKey));
+root.addEventListener("change", () => formDrafts.capture(root, renderedFormKey));
+window.addEventListener("pagehide", () => formDrafts.capture(root, renderedFormKey));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") void checkDateBoundary().catch(showBackgroundError);
+});
+window.addEventListener("focus", () => void checkDateBoundary().catch(showBackgroundError));
 
 async function boot(): Promise<void> {
-  await platform.initialize();
-  await loadToday();
-  render();
+  try {
+    await platform.initialize();
+    await loadToday();
+    render();
+  } catch (error) {
+    renderLoadRecovery(error);
+  }
+}
+
+function renderLoadRecovery(error: unknown): void {
+  root.innerHTML = `<main class="shell"><h1>기록을 불러오지 못했습니다</h1><p>기존 자료는 초기화하지 않았습니다.</p><p role="alert">${escapeHtml(error instanceof Error ? error.message : "저장소 연결을 확인하세요.")}</p><button id="retry-load">다시 불러오기</button><button id="recover-export">현재 자료 보관</button><button id="recover-import">백업으로 복구</button></main>`;
+  root.querySelector("#retry-load")?.addEventListener("click", () => void boot());
+  for (const id of ["recover-export", "recover-import"]) {
+    root.querySelector<HTMLButtonElement>("#" + id)?.addEventListener("click", async () => {
+      if (actionInProgress) return;
+      actionInProgress = true;
+      root.querySelectorAll<HTMLButtonElement>("button").forEach((button) => { button.disabled = true; });
+      try {
+        if (id === "recover-export") {
+          const result = await platform.exportJson(await store.createBackup({ kind: "all" }), buildBackupFilename("recovery-raw"));
+          renderLoadRecovery(new Error(result.status === "saved" ? "현재 자료를 파일로 보관했습니다." : "파일 저장을 취소했습니다. 기존 자료는 유지됩니다."));
+        } else {
+          const file = await platform.pickTextFile();
+          if (!file) { renderLoadRecovery(error); return; }
+          const parsed = readJsonText(file.text);
+          assertPhoneInstallBackup(parsed);
+          const backup = normalizePhoneInstallBackup(parsed);
+          if (!confirm(`${backup.days.length}일의 백업으로 해당 날짜를 복구할까요? 다른 날짜는 유지하고 복구 전 자료는 내부에 보관합니다.`)) { renderLoadRecovery(error); return; }
+          await platform.saveJsonSnapshot(await store.createBackup({ kind: "all" }), buildBackupFilename("recovery-before"));
+          await store.importBackup(backup, { mode: "overwrite" });
+          backup.days.forEach((day) => formDrafts.clearDate(day.date));
+          discardDraftOnRender = true;
+          await boot();
+        }
+      } catch (failure) { renderLoadRecovery(failure); }
+      finally { actionInProgress = false; }
+    });
+  }
 }
 
 async function loadToday(): Promise<void> {
   const date = todayKey();
+  observedToday = date;
+  historicalEditing = false;
+  rolloverChoice = false;
   currentDay = await store.getDay(date);
   if (!currentDay) {
     currentDay = createEmptyDay(date);
@@ -113,6 +171,8 @@ async function loadToday(): Promise<void> {
 
 function render(): void {
   if (!currentDay) return;
+  if (!discardDraftOnRender) formDrafts.capture(root, renderedFormKey);
+  discardDraftOnRender = false;
 
   const calculation = calculateDay(currentDay);
   const report = buildDailyReport(currentDay, calculation, { title: "Delivery Master Install Report" });
@@ -134,10 +194,22 @@ function render(): void {
       </section>
 
       ${renderTabs()}
+      ${actionError ? `<aside class="warning" role="alert">${escapeHtml(actionError)}</aside>` : ""}
+      ${historyReadErrors.length ? `<aside class="warning" role="alert">${escapeHtml(historyReadErrors.join(", "))} 기록을 읽지 못했습니다. 해당 자료는 삭제하지 않았습니다.</aside>` : ""}
+      ${rolloverChoice ? `<aside class="warning"><strong>${escapeHtml(currentDay.date)} 기록이 열려 있습니다.</strong><div class="field-actions"><button data-action="continue-previous-day">이전 업무 계속</button><button data-action="start-today">오늘 업무 열기</button></div></aside>` : ""}
+      ${calculation.warnings.filter((warning) => warning.code !== "missing_calculation_event").length ? `<aside class="warning" role="status">${calculation.warnings.filter((warning) => warning.code !== "missing_calculation_event").map((warning) => escapeHtml(warning.message)).join("<br>")}</aside>` : ""}
       ${renderActiveTabContent(calculation, report, history, pendingZone)}
     </main>
   `;
 
+  renderedFormKey = [currentDay.date, activeTab, activeLogEditEventId, getOrderedZones().find((zone) => !hasZoneEnded(zone.id))?.id ?? "closed"].join(":");
+  if (formDrafts.restore(root, renderedFormKey)) {
+    const notice = document.createElement("p");
+    notice.className = "draft-notice";
+    notice.setAttribute("role", "status");
+    notice.textContent = "미저장 입력을 복원했습니다. 저장된 기록은 변경되지 않았습니다.";
+    root.querySelector(".tabbar")?.after(notice);
+  }
   root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
     button.addEventListener("click", () => void runButtonAction(button));
   });
@@ -146,16 +218,62 @@ function render(): void {
 }
 
 async function runButtonAction(button: HTMLButtonElement): Promise<void> {
-  if (button.disabled) return;
-  button.disabled = true;
+  if (button.disabled || actionInProgress) return;
+  if (todayKey() !== observedToday) {
+    try { await checkDateBoundary(); } catch (error) { showBackgroundError(error); }
+    return;
+  }
+  if (rolloverChoice && !["continue-previous-day", "start-today", "set-tab", "open-log-edit", "close-log-edit", "save-log-edit"].includes(button.dataset.action ?? "")) return;
+  const before = currentDay ? structuredClone(currentDay) : null;
+  const beforeEditId = activeLogEditEventId;
+  const buttons = [...root.querySelectorAll<HTMLButtonElement>("button")];
+  const disabled = buttons.map((element) => element.disabled);
+  actionInProgress = true;
+  currentAction = button.dataset.action ?? "";
+  actionError = "";
+  buttons.forEach((element) => { element.disabled = true; });
   try {
     await handleAction(button);
   } catch (error) {
     console.error("Action failed", error);
-    toast(error instanceof Error ? error.message : "작업을 완료하지 못했습니다. 다시 시도하세요.");
+    activeLogEditEventId = beforeEditId;
+    if (before) {
+      try { currentDay = await store.getDay(before.date) ?? before; } catch { currentDay = before; }
+    }
+    actionError = error instanceof Error ? error.message : "작업을 완료하지 못했습니다. 입력 내용을 확인하고 다시 저장하세요.";
+    render();
+    toast(actionError);
   } finally {
-    button.disabled = false;
+    actionInProgress = false;
+    currentAction = "";
+    buttons.forEach((element, index) => { element.disabled = disabled[index]!; });
   }
+}
+
+function discardFormDraft(): void {
+  formDrafts.clear(renderedFormKey);
+  discardDraftOnRender = true;
+}
+
+function showBackgroundError(error: unknown): void {
+  actionError = error instanceof Error ? error.message : "기록을 다시 확인하지 못했습니다. 기존 자료는 보존됩니다.";
+  if (currentDay) render();
+}
+
+async function checkDateBoundary(): Promise<boolean> {
+  const today = todayKey();
+  if (!currentDay || actionInProgress || today === observedToday) return false;
+  observedToday = today;
+  if (historicalEditing) return false;
+  if ((currentDay.timeline.some((event) => event.type === "depart_jinjeop") && !hasEvent("day_close")) || activeLogEditEventId) {
+    rolloverChoice = true;
+    render();
+  } else {
+    await loadToday();
+    activeTab = "work";
+    render();
+  }
+  return true;
 }
 function renderTabs(): string {
   const tabs: Array<{ key: AppTab; label: string }> = [
@@ -222,8 +340,6 @@ function renderLogTab(calculation: DayCalculation): string {
   return `
     <section class="panel">
       <h2>로그</h2>
-      <p class="hint">현장에서 평소 확인하는 시간순 기록입니다. 이 화면만 보고 하루 흐름을 복구할 수 있어야 합니다.</p>
-      <p class="hint">각 항목의 연필 버튼으로 timeline 원본 기록을 바로 고칩니다. 로그 문구만 바꾸지 않고 저장 데이터가 같이 수정됩니다.</p>
       <div class="timeline-log">
         ${buildLogEntries(calculation).map((entry) => renderLogEntry(entry)).join("")}
       </div>
@@ -247,7 +363,6 @@ function renderStatsTab(history: DayRecord[]): string {
   return `
     <section class="panel">
       <h2>통계</h2>
-      <p class="hint">비율카드를 먼저 보고, 필요하면 주간·월간·날짜별 흐름을 아래에서 확인합니다.</p>
       ${renderStatsSubtabs()}
       ${activeStatsTab === "week" ? renderWeeklyStats(history) : ""}
       ${activeStatsTab === "month" ? renderMonthlyStats(history) : ""}
@@ -280,9 +395,9 @@ function renderWeeklyStats(history: DayRecord[]): string {
 
   return `
     <div class="period-nav">
-      <button class="secondary" data-action="stats-week-prev">이전 주</button>
+      <button class="secondary" data-action="stats-week-prev" aria-label="이전 주" title="이전 주">&#8592;</button>
       <strong>${formatDateRange(range.start, range.end)}</strong>
-      <button class="secondary" data-action="stats-week-next" ${statsWeekOffset >= 0 ? "disabled" : ""}>다음 주</button>
+      <button class="secondary" data-action="stats-week-next" aria-label="다음 주" title="다음 주" ${statsWeekOffset >= 0 ? "disabled" : ""}>&#8594;</button>
     </div>
     ${renderQuantityComparison(title, stats.quantityComparison)}
     ${renderPeriodSummary(stats)}
@@ -299,9 +414,9 @@ function renderMonthlyStats(history: DayRecord[]): string {
 
   return `
     <div class="period-nav">
-      <button class="secondary" data-action="stats-month-prev">이전 달</button>
+      <button class="secondary" data-action="stats-month-prev" aria-label="이전 달" title="이전 달">&#8592;</button>
       <strong>${formatMonthTitle(range.start)}</strong>
-      <button class="secondary" data-action="stats-month-next" ${statsMonthOffset >= 0 ? "disabled" : ""}>다음 달</button>
+      <button class="secondary" data-action="stats-month-next" aria-label="다음 달" title="다음 달" ${statsMonthOffset >= 0 ? "disabled" : ""}>&#8594;</button>
     </div>
     ${renderQuantityComparison(title, stats.quantityComparison)}
     ${renderPeriodSummary(stats)}
@@ -391,9 +506,9 @@ function buildPeriodStats(days: DayRecord[]): PeriodStats {
   const expectedQuantity = expectedValues.length > 0
     ? expectedValues.reduce((sum, value) => sum + value, 0)
     : undefined;
-  const efficiencies = deliveryPairs
-    .map((pair) => pair.calculation.totals.efficiencyPerHour)
-    .filter((value): value is number => typeof value === "number" && value > 0 && value < 300);
+  const efficiencyCount = deliveryPairs.reduce((sum, pair) => sum + (pair.calculation.totals.efficiencyCount ?? pair.calculation.totals.deliveredCount), 0);
+  const efficiencyMinutes = sumDefined(deliveryPairs.map((pair) => pair.calculation.totals.deliveryMinutes));
+  const allEfficienciesKnown = deliveryPairs.every((pair) => pair.calculation.totals.efficiencyPerHour !== undefined);
   const daySummaries = deliveryPairs.map((pair) => ({
     date: pair.dayRecord.date,
     totalQuantity: pair.calculation.totals.deliveredCount,
@@ -407,8 +522,8 @@ function buildPeriodStats(days: DayRecord[]): PeriodStats {
     workDays: deliveryPairs.length,
     totalElapsedMinutes: sumDefined(deliveryPairs.map((pair) => pair.calculation.totals.totalElapsedMinutes)),
     deliveryMinutes: sumDefined(deliveryPairs.map((pair) => pair.calculation.totals.deliveryMinutes)),
-    averageEfficiencyPerHour: efficiencies.length > 0
-      ? efficiencies.reduce((sum, value) => sum + value, 0) / efficiencies.length
+    averageEfficiencyPerHour: allEfficienciesKnown && efficiencyMinutes !== undefined && efficiencyMinutes >= 1
+      ? efficiencyCount / (efficiencyMinutes / 60)
       : undefined,
     dailyAverage: deliveryPairs.length > 0 ? totalQuantity / deliveryPairs.length : undefined,
     maxDay: daySummaries.length > 0
@@ -459,17 +574,16 @@ function buildQuantityComparisonFromPairs(
 function buildZonePeriodSummaries(
   pairs: Array<{ dayRecord: DayRecord; calculation: DayCalculation }>,
 ): ZonePeriodSummary[] {
-  const zones = new Map<string, { label: string; quantity: number; deliveryMinutes: number; efficiencies: number[] }>();
+  const zones = new Map<string, { label: string; quantity: number; deliveryMinutes: number; efficiencyCount: number; reliable: boolean }>();
 
   for (const pair of pairs) {
     for (const zone of pair.calculation.zones) {
       const label = getZoneNameFromDay(pair.dayRecord, zone.zoneId);
-      const current = zones.get(label) ?? { label, quantity: 0, deliveryMinutes: 0, efficiencies: [] };
+      const current = zones.get(label) ?? { label, quantity: 0, deliveryMinutes: 0, efficiencyCount: 0, reliable: true };
       current.quantity += zone.counts.delivered;
       current.deliveryMinutes += zone.deliveryMinutes ?? 0;
-      if (zone.efficiencyPerHour !== undefined && zone.efficiencyPerHour > 0 && zone.efficiencyPerHour < 300) {
-        current.efficiencies.push(zone.efficiencyPerHour);
-      }
+      current.efficiencyCount += zone.efficiencyCount ?? zone.counts.delivered;
+      if (zone.counts.delivered > 0 && zone.efficiencyPerHour === undefined) current.reliable = false;
       zones.set(label, current);
     }
   }
@@ -480,8 +594,8 @@ function buildZonePeriodSummaries(
       label: zone.label,
       quantity: zone.quantity,
       deliveryMinutes: zone.deliveryMinutes > 0 ? zone.deliveryMinutes : undefined,
-      efficiencyPerHour: zone.efficiencies.length > 0
-        ? zone.efficiencies.reduce((sum, value) => sum + value, 0) / zone.efficiencies.length
+      efficiencyPerHour: zone.reliable && zone.deliveryMinutes >= 1
+        ? zone.efficiencyCount / (zone.deliveryMinutes / 60)
         : undefined,
     }))
     .sort((left, right) => right.quantity - left.quantity);
@@ -888,7 +1002,7 @@ function buildLogEntries(calculation: DayCalculation): LogViewEntry[] {
 function buildLogEntriesForDay(dayRecord: DayRecord, calculation: DayCalculation): LogViewEntry[] {
   const entries: LogViewEntry[] = [];
   const zoneCalcs = new Map(calculation.zones.map((zone) => [zone.zoneId, zone]));
-  const orderedEvents = [...dayRecord.timeline].sort(compareLogEventOrder);
+  const orderedEvents = [...dayRecord.timeline].sort((a, b) => compareLogEventOrder(a, b, dayRecord));
 
   for (const event of orderedEvents) {
     const zoneName = event.zoneId ? getZoneNameFromDay(dayRecord, event.zoneId) : undefined;
@@ -1005,6 +1119,9 @@ function renderLogInlineEditor(eventId: string, editKind?: LogEditKind): string 
   if (editKind === "arrive") {
     return renderLogEventTimeEditor(event, "청량리 도착 수정", "도착 시각을 고치면 운전 시간이 다시 계산됩니다.", "", "도착 시각");
   }
+  if (editKind === "day_close") {
+    return renderLogEventTimeEditor(event, "업무 종료 수정", "", "", "업무 종료 시각");
+  }
 
   if (editKind === "zone_start") {
     return renderLogEventTimeEditor(event, `${escapeHtml(zoneName ?? "구역")} 시작 수정`, "로그 현장 정정은 입력값을 우선 저장하고 시간축 경고는 정정 이력에 남깁니다.", "", "구역 시작 시각");
@@ -1041,6 +1158,11 @@ function renderLogInlineEditor(eventId: string, editKind?: LogEditKind): string 
           <label>추가
             <input id="${escapeAttribute(`${baseId}-extra`)}" type="text" inputmode="numeric" maxlength="5" data-numeric-limit="5" value="${escapeAttribute(extra)}">
           </label>
+          ${event.zoneId && hasHandlingControl(event.zoneId) ? `
+            <label class="wide">${HANDLING_TITLE} (분)
+              <input id="${escapeAttribute(`${baseId}-handling`)}" type="text" inputmode="numeric" value="${readHandlingMinutes(findHandlingEvent(currentDay!, event.zoneId))}">
+            </label>
+          ` : ""}
         </div>
         ${renderLogEditButtons(event.id)}
       </article>
@@ -1048,6 +1170,20 @@ function renderLogInlineEditor(eventId: string, editKind?: LogEditKind): string 
   }
 
   if (editKind === "incident") {
+    if (isHandlingEvent(event)) {
+      return `
+        <article class="timeline-inline-editor">
+          <strong>${escapeHtml(zoneName ?? "구역")} ${HANDLING_TITLE}</strong>
+          <div class="log-inline-grid">
+            ${renderDigitTimeFields(`${baseId}-time`, "기록 시각", event.at)}
+            <label class="wide">소요 시간 (분 · 0은 적용 취소)
+              <input id="${escapeAttribute(`${baseId}-minutes`)}" type="text" inputmode="numeric" value="${readHandlingMinutes(event)}">
+            </label>
+          </div>
+          ${renderLogEditButtons(event.id)}
+        </article>
+      `;
+    }
     const minutes = typeof payload?.minutes === "number" ? String(payload.minutes) : "";
     const title = typeof payload?.title === "string" ? payload.title : "기타";
     const scope = typeof payload?.scope === "string" ? payload.scope : event.zoneId ? `zone:${event.zoneId}` : "work";
@@ -1190,6 +1326,8 @@ function getLogEditKind(event: TimelineEvent): LogEditKind | undefined {
       return "sorting_end";
     case "zone_end":
       return "zone_end";
+    case "day_close":
+      return "day_close";
     case "incident":
       return "incident";
     case "helper_add":
@@ -1209,14 +1347,11 @@ function getDriveMinutesForDay(dayRecord: DayRecord): number | undefined {
   return depart?.at && arrive?.at ? diffMinutesFromIso(depart.at, arrive.at) : undefined;
 }
 
-function compareLogEventOrder(a: TimelineEvent, b: TimelineEvent): number {
+function compareLogEventOrder(a: TimelineEvent, b: TimelineEvent, dayRecord: DayRecord): number {
   const byMinute = minuteTimestamp(a.at) - minuteTimestamp(b.at);
   if (byMinute !== 0) return byMinute;
 
-  const byAdjacentZoneFlow = adjacentZoneFlowPriority(a) - adjacentZoneFlowPriority(b);
-  if (byAdjacentZoneFlow !== 0) return byAdjacentZoneFlow;
-
-  const byPriority = logEventPriority(a) - logEventPriority(b);
+  const byPriority = logFlowPriority(a, dayRecord) - logFlowPriority(b, dayRecord);
   if (byPriority !== 0) return byPriority;
 
   const byTime = Date.parse(a.at) - Date.parse(b.at);
@@ -1225,10 +1360,12 @@ function compareLogEventOrder(a: TimelineEvent, b: TimelineEvent): number {
   return a.id.localeCompare(b.id);
 }
 
-function adjacentZoneFlowPriority(event: TimelineEvent): number {
-  if (event.type === "zone_end") return 0;
-  if (event.type === "zone_start") return 1;
-  return 0;
+function logFlowPriority(event: TimelineEvent, dayRecord: DayRecord): number {
+  if (event.type === "depart_jinjeop") return 0;
+  if (event.type === "arrive_cheongnyangni") return 1;
+  if (event.type === "day_close") return Number.MAX_SAFE_INTEGER;
+  const zone = dayRecord.zones.find((candidate) => candidate.id === event.zoneId);
+  return (zone?.order ?? dayRecord.zones.length + 1) * 100 + logEventPriority(event);
 }
 
 function minuteTimestamp(iso: string): number {
@@ -1380,7 +1517,7 @@ function renderWorkOrderStep(): string {
 }
 
 function renderZoneStartStep(zone: ZoneRecord): string {
-  const orderEditor = hasAnyZoneStarted() ? "" : renderZoneOrderEditor();
+  const orderEditor = renderZoneOrderEditor();
   const inProgressExtraButtons = shouldOfferExtraZoneBefore(zone)
     ? `
       <div class="field-action-note">
@@ -1391,7 +1528,6 @@ function renderZoneStartStep(zone: ZoneRecord): string {
         <button data-action="add-alt-zone">대체배송 계속 추가</button>
         <button class="secondary" data-action="add-custom-zone">추가구역 먼저 추가</button>
       </div>
-      <label>추가구역 이름<input id="custom-zone-name" type="text" maxlength="24" placeholder="예: 상가 추가"></label>
     `
     : "";
   return `
@@ -1410,14 +1546,13 @@ function renderZoneStartStep(zone: ZoneRecord): string {
 }
 
 function renderZoneOrderEditor(): string {
-  const zones = getOrderedZones();
+  const zones = getOrderedZones().filter((zone) => !hasZoneStarted(zone.id));
   return `
     <div class="order-editor">
-      <strong>오늘 작업 순서</strong>
-      <p class="hint">작업 시작 전에는 화살표로 순서를 바꿀 수 있습니다.</p>
+      <strong>남은 작업 순서</strong>
       ${zones.map((zone, index) => `
         <div class="order-row">
-          <span>${index + 1}. ${escapeHtml(zone.name)}</span>
+          <span>${zone.order}. ${escapeHtml(zone.name)}</span>
           <div>
             <button data-action="move-zone-up" data-zone="${zone.id}" ${index === 0 ? "disabled" : ""} title="위로">▲</button>
             <button data-action="move-zone-down" data-zone="${zone.id}" ${index === zones.length - 1 ? "disabled" : ""} title="아래로">▼</button>
@@ -1548,7 +1683,29 @@ function renderGenericZoneWorkStep(
         <button data-action="zone-end" data-zone="${zoneId}">${options.endLabel}</button>
         <p class="hint">뒤 구역에서는 당일 전체 수량을 넣어도 됩니다. 이전 완료 수량은 앱이 자동으로 뺍니다.</p>
       ` : ""}
+      ${hasHandlingControl(zoneId) ? renderHandlingControl(zoneId, options.countInputId) : ""}
     </section>
+  `;
+}
+
+function hasHandlingControl(zoneId: string): boolean {
+  const zone = currentDay?.zones.find((candidate) => candidate.id === zoneId);
+  return !!zone && (getZoneBucket(currentDay!, zoneId) === "hils" || !!findHandlingEvent(currentDay!, zoneId));
+}
+
+function renderHandlingControl(zoneId: string, countInputId: string): string {
+  const event = findHandlingEvent(currentDay!, zoneId);
+  const minutes = event ? readHandlingMinutes(event) : DEFAULT_HANDLING_MINUTES;
+  return `
+    <div class="handling-control">
+      <label for="handling-minutes">${HANDLING_TITLE} (분)</label>
+      <div class="handling-fields">
+        <input id="handling-minutes" type="text" inputmode="numeric" value="${minutes}">
+        <button class="secondary" data-action="save-handling" data-zone="${escapeAttribute(zoneId)}" data-count-input="${countInputId}">${event ? "수정" : "기록"}</button>
+        ${event && minutes > 0 ? `<button class="secondary" data-action="cancel-handling" data-zone="${escapeAttribute(zoneId)}" data-count-input="${countInputId}">취소</button>` : ""}
+      </div>
+      <p class="handling-status" role="status">${event ? minutes > 0 ? `별도 작업 ${minutes}분 적용됨` : "별도 작업 미적용" : "별도 작업 미기록"}</p>
+    </div>
   `;
 }
 
@@ -1897,6 +2054,25 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   const action = button.dataset.action ?? "";
   const zoneId = button.dataset.zone;
 
+  if (action === "continue-previous-day") {
+    rolloverChoice = false;
+    historicalEditing = true;
+    render();
+    return;
+  }
+  if (action === "start-today") {
+    await loadToday();
+    activeLogEditEventId = "";
+    activeTab = "work";
+    render();
+    return;
+  }
+
+  if ((action === "save-handling" || action === "cancel-handling") && zoneId) {
+    await saveHandlingControl(button, zoneId, action === "cancel-handling");
+    return;
+  }
+
   if (action === "set-tab") {
     const tab = button.dataset.tab as AppTab | undefined;
     if (tab && ["work", "log", "report", "stats", "backup"].includes(tab)) {
@@ -1993,6 +2169,8 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     currentDay = createEmptyDay(currentDay.date);
     await store.saveDay(currentDay);
     await refreshHistory();
+    formDrafts.clearDate(currentDay.date);
+    discardDraftOnRender = true;
     render();
     return;
   }
@@ -2080,6 +2258,7 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     return;
   }
   if (action === "close-log-edit") {
+    discardFormDraft();
     activeLogEditEventId = "";
     render();
     return;
@@ -2272,7 +2451,7 @@ function ensureDefaultWorkOrder(): void {
 }
 
 function addZoneToOrder(kind: "alt" | "custom", requestedName?: string): void {
-  if (!currentDay || hasAnyZoneStarted()) return;
+  if (!currentDay) return;
   const id = createExtraZoneId(kind);
   const name = kind === "alt" ? getNextAltZoneName() : requestedName?.trim() || "추가 구역";
   ensureZone(id, name, getNextZoneOrder());
@@ -2315,8 +2494,8 @@ async function cancelEmptyStartedExtraZone(zoneId: string): Promise<void> {
 }
 
 function moveZone(zoneId: string, direction: -1 | 1): void {
-  if (!currentDay || hasAnyZoneStarted()) return;
-  const ordered = getOrderedZones();
+  if (!currentDay || hasZoneStarted(zoneId)) return;
+  const ordered = getOrderedZones().filter((zone) => !hasZoneStarted(zone.id));
   const index = ordered.findIndex((zone) => zone.id === zoneId);
   const targetIndex = index + direction;
   if (index < 0 || targetIndex < 0 || targetIndex >= ordered.length) return;
@@ -2324,7 +2503,9 @@ function moveZone(zoneId: string, direction: -1 | 1): void {
   const [item] = next.splice(index, 1);
   if (!item) return;
   next.splice(targetIndex, 0, item);
-  currentDay.zones = next.map((zone, orderIndex) => ({ ...zone, order: orderIndex + 1 }));
+  const orderSlots = ordered.map((zone) => zone.order);
+  const updates = new Map(next.map((zone, orderIndex) => [zone.id, orderSlots[orderIndex]!]));
+  currentDay.zones = currentDay.zones.map((zone) => updates.has(zone.id) ? { ...zone, order: updates.get(zone.id)! } : zone);
 }
 
 function normalizeZoneOrders(): void {
@@ -2523,7 +2704,7 @@ async function saveLogEdit(eventId?: string): Promise<void> {
     await saveLogIncidentEdit(event);
     return;
   }
-  if (editKind === "depart" || editKind === "arrive") {
+  if (editKind === "depart" || editKind === "arrive" || editKind === "day_close") {
     await saveLogCoreEventEdit(event);
     return;
   }
@@ -2556,6 +2737,7 @@ async function saveLogMissingSortingEndEdit(editKey: string): Promise<void> {
     note: "로그에서 누락된 정리 완료를 현장 정정으로 추가",
   });
   linkLatestEvent(zoneId, "sorting_end", "sortingEndEventId");
+  currentDay = applyCompletedZoneEdit(currentDay, { zoneId, sortingEndAt: at, reason: "missing_sorting_end_reconcile" });
   const axisIssue = validateTimeAxis(currentDay)[0];
   currentDay = withLogInlineAdjustment(
     currentDay,
@@ -2572,7 +2754,7 @@ async function saveLogMissingSortingEndEdit(editKey: string): Promise<void> {
 async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
   if (!currentDay) return;
   const baseId = `log-edit-${event.id}`;
-  const label = event.type === "depart_jinjeop" ? "출발 시각" : "도착 시각";
+  const label = event.type === "depart_jinjeop" ? "출발 시각" : event.type === "day_close" ? "업무 종료 시각" : "도착 시각";
   const at = readRequiredDigitTimeInput(`${baseId}-time`, label, event.at);
   if (!at) return;
 
@@ -2595,7 +2777,7 @@ async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
   currentDay = withLogInlineAdjustment(
     currentDay,
     event.id,
-    event.type === "depart_jinjeop" ? "log_inline_depart_edit" : "log_inline_arrive_edit",
+    event.type === "depart_jinjeop" ? "log_inline_depart_edit" : event.type === "day_close" ? "log_inline_close_edit" : "log_inline_arrive_edit",
     axisIssue
       ? `${event.type} 수정 · 시간축 경고: ${axisIssue.message}`
       : `${event.type} 수정 · 로그 현장 정정`,
@@ -2605,12 +2787,56 @@ async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
   await saveAndRender();
 }
 
+function readHandlingInput(selector: string): number {
+  const value = root.querySelector<HTMLInputElement>(selector)?.value.trim() ?? "";
+  if (!/^\d{1,3}$/.test(value)) throw new Error("작업 시간은 0~999분으로 입력하세요. 0분은 적용 취소입니다.");
+  return Number(value);
+}
+
+let handlingSaveInProgress = false;
+async function saveHandlingControl(button: HTMLButtonElement, zoneId: string, cancel: boolean): Promise<void> {
+  if (!currentDay || handlingSaveInProgress) return;
+  const minutes = cancel ? 0 : readHandlingInput("#handling-minutes");
+  const countId = button.dataset.countInput ?? "";
+  const countDraft = document.getElementById(countId) as HTMLInputElement | null;
+  const draft = countDraft?.value;
+  const next = setHandlingMinutes(currentDay, { zoneId, minutes });
+  const buttons = [...root.querySelectorAll<HTMLButtonElement>("button")];
+  const disabledStates = buttons.map((element) => element.disabled);
+  handlingSaveInProgress = true;
+  buttons.forEach((element) => { element.disabled = true; });
+  try {
+    await savePreparedSnapshot("handling-before", { kind: "date", date: currentDay.date });
+    await store.saveDay(next);
+    currentDay = next;
+    await refreshHistory();
+    render();
+    const restored = document.getElementById(countId) as HTMLInputElement | null;
+    if (restored && draft !== undefined) restored.value = draft;
+    toast(minutes > 0 ? `별도 작업 ${minutes}분을 기록했습니다.` : "별도 작업 시간 적용을 취소했습니다.");
+  } finally {
+    handlingSaveInProgress = false;
+    buttons.forEach((element, index) => { element.disabled = disabledStates[index]!; });
+  }
+}
+
 async function saveLogIncidentEdit(event: TimelineEvent): Promise<void> {
   if (!currentDay) return;
   const payload = event.payload && typeof event.payload === "object" ? { ...(event.payload as Record<string, unknown>) } : {};
   const baseId = `log-edit-${event.id}`;
   const at = readRequiredDigitTimeInput(`${baseId}-time`, "이벤트 시각", event.at);
   if (!at) return;
+  if (isHandlingEvent(event) && event.zoneId) {
+    const minutes = readHandlingInput(`#${baseId}-minutes`);
+    let next = setHandlingMinutes(currentDay, { zoneId: event.zoneId, minutes });
+    next = updateEvent(next, event.id, { at });
+    await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
+    currentDay = withLogInlineAdjustment(next, event.id, "log_inline_handling_edit", `${HANDLING_TITLE} ${minutes}분`);
+    activeLogEditEventId = "";
+    await saveAndRender();
+    toast(minutes > 0 ? `별도 작업 ${minutes}분으로 수정했습니다.` : "별도 작업 시간 적용을 취소했습니다.");
+    return;
+  }
   const title = readText(`#${baseId}-title`, typeof payload.title === "string" ? payload.title : "기타");
   const minutesInput = readLimitedNumberField(`#${baseId}-minutes`, 3);
   const scope = readText(`#${baseId}-scope`, typeof payload.scope === "string" ? payload.scope : "work");
@@ -2650,6 +2876,8 @@ async function saveLogZoneEventEdit(event: TimelineEvent): Promise<void> {
   }
 
   const updateInput: Parameters<typeof applyCompletedZoneEdit>[1] = { zoneId, reason: "log_inline_zone_edit" };
+  const handlingMinutes = event.type === "zone_end" && hasHandlingControl(zoneId)
+    ? readHandlingInput(`#${baseId}-handling`) : undefined;
   if (event.type === "zone_start") updateInput.startAt = nextStartAt;
   if (event.type === "delivery_start") updateInput.deliveryStartAt = nextDeliveryStartAt;
   if (event.type === "sorting_start") updateInput.sortingStartAt = nextSortingStartAt;
@@ -2668,6 +2896,9 @@ async function saveLogZoneEventEdit(event: TimelineEvent): Promise<void> {
 
   await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
   currentDay = applyCompletedZoneEdit(currentDay, updateInput);
+  if (handlingMinutes !== undefined && handlingMinutes !== readHandlingMinutes(findHandlingEvent(currentDay, zoneId))) {
+    currentDay = setHandlingMinutes(currentDay, { zoneId, minutes: handlingMinutes, at: nextEndAt });
+  }
   ensureDeliveryStartBeforeZoneEnd(zoneId, nextEndAt);
   const axisIssue = validateTimeAxis(currentDay)[0];
   currentDay = withLogInlineAdjustment(
@@ -3401,14 +3632,23 @@ async function saveAndRender(): Promise<void> {
   if (!currentDay) return;
   currentDay.meta.updatedAt = nowIso();
   await store.saveDay(currentDay);
-  await buildPhoneInstallDashboard(store);
   await refreshHistory();
+  if (["save-log-edit", "save-zone-edit", "apply-zone-correction"].includes(currentAction)) discardFormDraft();
+  if (currentAction === "add-event") {
+    formDrafts.capture(root, renderedFormKey);
+    formDrafts.clearFields(renderedFormKey, ["#event-title", "#event-scope", "#event-at", "#event-minutes", "#event-note"]);
+    discardDraftOnRender = true;
+  }
   render();
 }
 
 async function refreshHistory(): Promise<void> {
   const summaries = await store.listDates();
-  const days = await Promise.all(summaries.map((summary) => store.getDay(summary.date)));
+  historyReadErrors = [];
+  const days = await Promise.all(summaries.map(async (summary) => {
+    try { return await store.getDay(summary.date); }
+    catch { historyReadErrors.push(summary.date); return undefined; }
+  }));
   historyDays = days.filter((day): day is DayRecord => Boolean(day));
 }
 
@@ -3416,10 +3656,13 @@ async function importFieldBackupFile(): Promise<void> {
   const file = await platform.pickTextFile();
   if (!file) return;
 
+  let recognizedDays = 0;
+  let snapshotCreated = false;
+  let receipt: ImportFeedback | null = null;
   try {
     const data = readJsonText(file.text);
     const migration = buildFieldAppMigrationBackup(data, { appVersion: APP_VERSION });
-    const recognizedDays = migration.backup.days.length;
+    recognizedDays = migration.backup.days.length;
     if (recognizedDays === 0) {
       lastImportFeedback = {
         fileName: file.name,
@@ -3460,7 +3703,11 @@ async function importFieldBackupFile(): Promise<void> {
     const beforeBackup = await store.createBackup({ kind: "all" });
     await platform.saveJsonSnapshot(beforeBackup, buildBackupFilename("before-import"));
 
+    snapshotCreated = true;
     const result = await applyFieldImportWithAutoCorrection(migration.backup.days);
+    result.importedDates.forEach((date) => formDrafts.clearDate(date));
+    discardDraftOnRender = true;
+    receipt = { fileName: file.name, recognizedDays, importedCount: result.importedDates.length, skippedCount: result.protectedDates.length, importedDates: result.importedDates, skippedDates: result.protectedDates, message: "기록 반영 완료", snapshotCreated: true, backupExported: false };
     await loadToday();
 
     const afterBackup = await store.createBackup({ kind: "all" });
@@ -3483,15 +3730,21 @@ async function importFieldBackupFile(): Promise<void> {
     toast(`현장앱 백업 가져오기 완료: ${result.importedDates.length}일`);
     render();
   } catch (error) {
+    if (receipt) {
+      lastImportFeedback = { ...receipt, message: "기록 반영은 완료됐습니다. 후속 화면 갱신/안전 사본 확인 필요: " + (error instanceof Error ? error.message : "후속 처리 실패") };
+      render();
+      toast("기록은 반영됐습니다. 복구 결과의 확인 필요 항목을 확인하세요.");
+      return;
+    }
     lastImportFeedback = {
       fileName: file.name,
-      recognizedDays: 0,
+      recognizedDays,
       importedCount: 0,
       skippedCount: 0,
       importedDates: [],
       skippedDates: [],
       message: error instanceof Error ? error.message : "현장앱 백업 가져오기 실패",
-      snapshotCreated: false,
+      snapshotCreated,
       backupExported: false,
     };
     render();
@@ -3503,11 +3756,14 @@ async function importPhoneInstallBackupFile(): Promise<void> {
   const file = await platform.pickTextFile();
   if (!file) return;
 
+  let recognizedDays = 0;
+  let snapshotCreated = false;
+  let receipt: ImportFeedback | null = null;
   try {
     const data = readJsonText(file.text);
     assertPhoneInstallBackup(data);
     const backup = normalizePhoneInstallBackup(data);
-    const recognizedDays = backup.days.length;
+    recognizedDays = backup.days.length;
     if (recognizedDays === 0) {
       lastImportFeedback = {
         title: "개발앱 백업 복구 결과",
@@ -3525,10 +3781,8 @@ async function importPhoneInstallBackupFile(): Promise<void> {
       return;
     }
 
-    const existingDates: string[] = [];
-    for (const day of backup.days) {
-      if (await store.getDay(day.date)) existingDates.push(day.date);
-    }
+    const storedDates = new Set((await store.listDates()).map((item) => item.date));
+    const existingDates = backup.days.filter((day) => storedDates.has(day.date)).map((day) => day.date);
     const firstDate = backup.days[0]?.date ?? "-";
     const lastDate = backup.days.at(-1)?.date ?? "-";
     const ok = confirm(
@@ -3561,7 +3815,11 @@ async function importPhoneInstallBackupFile(): Promise<void> {
     const beforeBackup = await store.createBackup({ kind: "all" });
     await platform.saveJsonSnapshot(beforeBackup, buildBackupFilename(`before-phone-${mode}`));
 
+    snapshotCreated = true;
     const result = await store.importBackup(backup, { mode });
+    result.imported.forEach((item) => formDrafts.clearDate(item.date));
+    discardDraftOnRender = true;
+    receipt = { title: "인스톨 앱 복구 결과", fileName: file.name, recognizedDays, importedCount: result.imported.length, skippedCount: result.skipped.length, importedDates: result.imported.map((item) => item.date), skippedDates: result.skipped.map((item) => item.date), message: "기록 반영 완료", snapshotCreated: true, backupExported: false };
     await loadToday();
 
     const afterBackup = await store.createBackup({ kind: "all" });
@@ -3585,16 +3843,22 @@ async function importPhoneInstallBackupFile(): Promise<void> {
     toast(`개발앱 백업 복구 완료: ${result.imported.length}일`);
     render();
   } catch (error) {
+    if (receipt) {
+      lastImportFeedback = { ...receipt, message: "기록 반영은 완료됐습니다. 후속 화면 갱신/안전 사본 확인 필요: " + (error instanceof Error ? error.message : "후속 처리 실패") };
+      render();
+      toast("기록은 반영됐습니다. 복구 결과의 확인 필요 항목을 확인하세요.");
+      return;
+    }
     lastImportFeedback = {
       title: "개발앱 백업 복구 결과",
       fileName: file.name,
-      recognizedDays: 0,
+      recognizedDays,
       importedCount: 0,
       skippedCount: 0,
       importedDates: [],
       skippedDates: [],
       message: error instanceof Error ? error.message : "개발앱 백업 복구 실패",
-      snapshotCreated: false,
+      snapshotCreated,
       backupExported: false,
     };
     render();
@@ -3608,32 +3872,35 @@ interface AutoImportResult {
 }
 
 async function applyFieldImportWithAutoCorrection(days: DayRecord[]): Promise<AutoImportResult> {
-  const importedDates: string[] = [];
+  const planned: DayRecord[] = [];
   const protectedDates: string[] = [];
-
+  const reserved = new Set<string>();
   for (const incoming of days) {
-    const existing = await store.getDay(incoming.date);
-
-    if (!existing || isAutoReplaceableEmptyDay(existing)) {
-      await store.saveDay({
-        ...incoming,
-        meta: {
-          ...incoming.meta,
-          updatedAt: nowIso(),
-          recoveryStatus: existing ? "needsReview" : incoming.meta.recoveryStatus,
-        },
-      });
-      importedDates.push(incoming.date);
+    let unreadable = false;
+    const existing = await store.getDay(incoming.date).catch(() => { unreadable = true; return null; });
+    if ((!existing && !unreadable) || (existing && isAutoReplaceableEmptyDay(existing))) {
+      planned.push({ ...incoming, meta: { ...incoming.meta, updatedAt: nowIso(), recoveryStatus: existing ? "needsReview" : incoming.meta.recoveryStatus } });
+      reserved.add(incoming.date);
       continue;
     }
-
     const copy = createBackupCopyDay(incoming);
-    await store.saveDay(copy);
-    importedDates.push(copy.date);
-    protectedDates.push(`${incoming.date} -> ${copy.date}`);
+    const base = copy.date;
+    let suffix = 1;
+    const storedDates = new Set((await store.listDates()).map((item) => item.date));
+    while (reserved.has(copy.date) || storedDates.has(copy.date)) {
+      copy.date = base + "_" + suffix++;
+      copy.id = "day-" + copy.date;
+    }
+    reserved.add(copy.date);
+    planned.push(copy);
+    protectedDates.push(incoming.date + " -> " + copy.date);
   }
-
-  return { importedDates, protectedDates };
+  const backup = normalizePhoneInstallBackup({
+    schemaVersion: 1, app: "delivery-master-phone-install", backupType: "day-record-store",
+    exportedAt: nowIso(), scope: { kind: "all" }, days: planned,
+  });
+  const result = await store.importBackup(backup, { mode: "overwrite" });
+  return { importedDates: result.imported.map((item) => item.date), protectedDates };
 }
 
 function isAutoReplaceableEmptyDay(day: DayRecord): boolean {
@@ -3652,6 +3919,7 @@ async function loadCorrectionDate(): Promise<void> {
     return;
   }
   currentDay = day;
+  historicalEditing = day.date !== todayKey();
   activeTab = "backup";
   activeCorrectionTargetId = "";
   activeLogEditEventId = "";

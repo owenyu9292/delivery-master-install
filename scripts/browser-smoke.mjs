@@ -793,7 +793,7 @@ const result = {
   mobileViewport,
   emptyDepartBlocked,
   startButtonBeforeOrderEditor,
-  orderEditorShown: orderBefore.includes("오늘 작업 순서") && orderBefore.includes("▲") && orderBefore.includes("▼"),
+  orderEditorShown: orderBefore.includes("남은 작업 순서") && orderBefore.includes("▲") && orderBefore.includes("▼"),
   movedDown: orderAfterDown.includes("1. 힐스테이트") && orderAfterDown.includes("2. 미주"),
   movedBackUp: orderAfterUp.includes("1. 미주") && orderAfterUp.includes("2. 힐스테이트"),
   addedAlt: orderWithAlt.includes("대체배송"),

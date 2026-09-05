@@ -69,6 +69,12 @@ export interface CountPayload {
   delivered?: number;
   failed?: number;
   extra?: number;
+  building1Total?: number;
+  building2Total?: number;
+  building3Total?: number;
+  restTotal?: number;
+  aTotal?: number;
+  bTotal?: number;
   reason?: string;
 }
 
@@ -166,6 +172,7 @@ export interface ZoneCalculation {
   deliveryMinutes?: number;
   eventMinutes?: number;
   counts: ZoneCountsCache;
+  efficiencyCount?: number;
   efficiencyPerHour?: number;
   sourceEventIds: string[];
 }

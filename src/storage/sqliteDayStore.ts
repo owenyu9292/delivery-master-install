@@ -3,7 +3,6 @@ import {
   PHONE_INSTALL_BACKUP_APP,
   PHONE_INSTALL_BACKUP_TYPE,
   assertPhoneInstallBackup,
-  createBackupCopyDay,
 } from "./backupImportExport";
 import {
   cloneBackupFile,
@@ -11,6 +10,7 @@ import {
   createDateSummary,
   type BackupFile,
   type BackupScope,
+  type CorruptDayRecord,
   type DateSummary,
   type DayStore,
   type ImportOptions,
@@ -19,6 +19,8 @@ import {
   type SaveResult,
 } from "./dayStore";
 import type { SqliteDriver, SqliteRow } from "./sqliteDriver";
+import { assertDayRecord } from "./recordValidation";
+import { buildImportPlan } from "./importPlan";
 
 const SCHEMA_VERSION = 1;
 
@@ -39,15 +41,20 @@ export class SqliteDayStore implements DayStore {
 
   async listDates(): Promise<DateSummary[]> {
     const rows = await this.rows();
-    return rows.map(rowToDay).map(createDateSummary).sort((a, b) => b.date.localeCompare(a.date));
+    return rows.map((row) => safeDateSummary(parseStoredRow(row))).sort((a, b) => b.date.localeCompare(a.date));
   }
 
   async getDay(date: string): Promise<DayRecord | null> {
-    const rows = await this.query("SELECT record_json FROM day_records WHERE date = ?", [date]);
-    return rows[0] ? cloneDayRecord(parseJson(rows[0].record_json)) : null;
+    const rows = await this.query("SELECT date, record_json FROM day_records WHERE date = ?", [date]);
+    if (!rows[0]) return null;
+    const day = parseStoredRow(rows[0]);
+    if (isCorruptDayRecord(day)) throw new Error("SQLite day record JSON is corrupt.");
+    assertDayRecord(day, "SQLite day record");
+    return cloneDayRecord(day);
   }
 
   async saveDay(dayRecord: DayRecord): Promise<SaveResult> {
+    assertDayRecord(dayRecord, "SQLite day record");
     const existing = await this.getDay(dayRecord.date);
     const savedAt = new Date().toISOString();
     await this.run(
@@ -67,8 +74,10 @@ export class SqliteDayStore implements DayStore {
   }
 
   async createBackup(scope: BackupScope = { kind: "all" }): Promise<BackupFile> {
-    const allDays = await this.allDays();
-    const days = scope.kind === "all" ? allDays : allDays.filter((day) => day.date === scope.date);
+    const storedDays = await this.allDaysRaw();
+    const selected = scope.kind === "all" ? storedDays : storedDays.filter((day) => rawDate(day) === scope.date);
+    const days = selected.filter((day): day is DayRecord => !isCorruptDayRecord(day)).map((day) => cloneDayRecord(day));
+    const corruptDays = selected.filter(isCorruptDayRecord);
     return {
       schemaVersion: 1,
       app: PHONE_INSTALL_BACKUP_APP,
@@ -76,63 +85,35 @@ export class SqliteDayStore implements DayStore {
       exportedAt: new Date().toISOString(),
       appVersion: this.appVersion,
       scope,
-      days: days.map(cloneDayRecord),
+      days,
+      ...(corruptDays.length > 0 ? { corruptDays } : {}),
     };
   }
 
   async importBackup(file: BackupFile, options: ImportOptions = { mode: "preview" }): Promise<ImportResult> {
     assertPhoneInstallBackup(file);
     const backup = cloneBackupFile(file);
-    const imported: DateSummary[] = [];
-    const skipped: ImportResult["skipped"] = [];
-    for (const day of backup.days) {
-      const existing = await this.getDay(day.date);
-      if (options.mode === "preview") {
-        if (existing) skipped.push({ date: day.date, reason: "existing_day_preview", existingUpdatedAt: existing.meta.updatedAt, incomingUpdatedAt: day.meta.updatedAt });
-        else imported.push(createDateSummary(day));
-        continue;
-      }
-      if (existing && options.mode === "skip") {
-
-        skipped.push({
-
-          date: day.date,
-
-          reason: "existing_day_preserved",
-
-          existingUpdatedAt: existing.meta.updatedAt,
-
-          incomingUpdatedAt: day.meta.updatedAt,
-
-        });
-
-        continue;
-
-      }
-
-
-      if (existing && options.mode === "copy") {
-        const copy = createBackupCopyDay(day);
-        await this.saveDay(copy);
-        imported.push(createDateSummary(copy));
-        continue;
-      }
-      if (existing && options.mode !== "overwrite") {
-        skipped.push({ date: day.date, reason: "existing_day_requires_copy_or_overwrite", existingUpdatedAt: existing.meta.updatedAt, incomingUpdatedAt: day.meta.updatedAt });
-        continue;
-      }
-      await this.saveDay(day);
-      imported.push(createDateSummary(day));
+    const existing = await this.allDaysRaw();
+    const plan = buildImportPlan(backup, existing, options.mode);
+    if (options.mode === "preview" || plan.writes.length === 0) return plan.result;
+    await this.ensureReady();
+    await this.driver.beginTransaction();
+    try {
+      for (const day of plan.writes) await this.runInTransaction(day);
+      await this.driver.commitTransaction();
+      return plan.result;
+    } catch (error) {
+      try { await this.driver.rollbackTransaction(); } catch { /* retain the original failure */ }
+      throw error;
     }
-    return { mode: options.mode, imported, skipped, preview: options.mode === "preview" };
   }
 
-  private async allDays(): Promise<DayRecord[]> {
-    return (await this.rows()).map(rowToDay);
+  private async allDaysRaw(): Promise<unknown[]> {
+    return (await this.rows()).map(parseStoredRow);
   }
 
   private async rows(): Promise<SqliteRow[]> {
-    return this.query("SELECT record_json FROM day_records ORDER BY date DESC");
+    return this.query("SELECT date, record_json FROM day_records ORDER BY date DESC");
   }
 
   private async query(statement: string, values: string[] = []): Promise<SqliteRow[]> {
@@ -143,6 +124,17 @@ export class SqliteDayStore implements DayStore {
   private async run(statement: string, values: (string | number)[]): Promise<void> {
     await this.ensureReady();
     await this.driver.run(statement, values);
+  }
+
+  private async runInTransaction(dayRecord: DayRecord): Promise<void> {
+    await this.driver.run(
+      `INSERT INTO day_records (date, record_json, updated_at, schema_version)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(date) DO UPDATE SET record_json = excluded.record_json,
+         updated_at = excluded.updated_at, schema_version = excluded.schema_version`,
+      [dayRecord.date, JSON.stringify(cloneDayRecord(dayRecord)), dayRecord.meta.updatedAt, SCHEMA_VERSION],
+      false,
+    );
   }
 
   private async execute(statements: string): Promise<void> {
@@ -165,11 +157,68 @@ export class SqliteDayStore implements DayStore {
   }
 }
 
-function rowToDay(row: SqliteRow): DayRecord {
-  return parseJson(row.record_json);
+function validatedDay(day: DayRecord, label: string): DayRecord {
+  assertDayRecord(day, label);
+  return day;
 }
 
-function parseJson(value: unknown): DayRecord {
-  if (typeof value !== "string") throw new Error("SQLite day record JSON is not text.");
-  return JSON.parse(value) as DayRecord;
+function safeDateSummary(day: unknown): DateSummary {
+  if (isCorruptDayRecord(day)) {
+    return { date: day.date, status: "reviewNeeded", eventCount: 0, updatedAt: "", recoveryStatus: "needsReview" };
+  }
+  if (isRecord(day)) {
+    try {
+      assertDayRecord(day, "SQLite day record");
+      return createDateSummary(day);
+    } catch {
+      return {
+        date: typeof day.date === "string" ? day.date : "unknown",
+        status: "reviewNeeded",
+        eventCount: Array.isArray(day.timeline) ? day.timeline.length : 0,
+        updatedAt: isRecord(day.meta) && typeof day.meta.updatedAt === "string" ? day.meta.updatedAt : "",
+        recoveryStatus: "needsReview",
+      };
+    }
+  }
+  return { date: "unknown", status: "reviewNeeded", eventCount: 0, updatedAt: "", recoveryStatus: "needsReview" };
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function parseStoredRow(row: SqliteRow): unknown {
+  const date = typeof row.date === "string" ? row.date : "unknown";
+  const rawCorruptJson = rawJsonText(row.record_json);
+  if (typeof row.record_json !== "string") return corruptDay(date, rawCorruptJson);
+  try {
+    const parsed = JSON.parse(row.record_json) as unknown;
+    if (!isRecord(parsed) || typeof parsed.date !== "string") return corruptDay(date, rawCorruptJson);
+    return parsed;
+  } catch {
+    return corruptDay(date, rawCorruptJson);
+  }
+}
+
+function corruptDay(date: string, rawCorruptJson: string): CorruptDayRecord {
+  return { kind: "corrupt-day-record", date, rawCorruptJson };
+}
+
+function isCorruptDayRecord(value: unknown): value is CorruptDayRecord {
+  return isRecord(value) && value.kind === "corrupt-day-record"
+    && typeof value.date === "string" && typeof value.rawCorruptJson === "string";
+}
+
+function rawDate(value: unknown): string | undefined {
+  return isRecord(value) && typeof value.date === "string" ? value.date : undefined;
+}
+
+function rawJsonText(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    const json = JSON.stringify(value);
+    return json === undefined ? String(value) : json;
+  } catch {
+    return String(value);
+  }
 }

@@ -12,6 +12,7 @@ import type {
   ImportOptions,
   ImportResult,
 } from "./dayStore";
+import { assertBackupDaysHaveUniqueIds, assertDayRecord } from "./recordValidation";
 
 export const PHONE_INSTALL_BACKUP_APP = "delivery-master-phone-install" as const;
 export const PHONE_INSTALL_BACKUP_TYPE = "day-record-store" as const;
@@ -121,7 +122,7 @@ export function assertPhoneInstallBackup(file: unknown): asserts file is BackupF
     throw new Error("백업 JSON 최상위 구조가 객체가 아닙니다.");
   }
 
-  const candidate = file as { app?: string; backupType?: string; schemaVersion?: unknown; days?: unknown };
+  const candidate = file as { app?: string; backupType?: string; schemaVersion?: unknown; days?: unknown; corruptDays?: unknown };
   if (candidate.app === FIELD_APP_BACKUP_APP) {
     throw new Error("Field app backups must be imported through migration, not direct restore.");
   }
@@ -130,6 +131,9 @@ export function assertPhoneInstallBackup(file: unknown): asserts file is BackupF
   }
   if (candidate.backupType && candidate.backupType !== PHONE_INSTALL_BACKUP_TYPE) {
     throw new Error(`Unsupported backup type: ${candidate.backupType}`);
+  }
+  if (candidate.corruptDays !== undefined) {
+    throw new Error("raw corrupt entries are not directly restorable");
   }
   if (candidate.schemaVersion !== 1) {
     throw new Error("지원하지 않는 백업 스키마입니다.");
@@ -146,13 +150,16 @@ export function assertPhoneInstallBackup(file: unknown): asserts file is BackupF
     }
     seenDates.add(day.date);
   });
+  assertBackupDaysHaveUniqueIds(candidate.days);
 }
 
 function assertBackupDayRecord(day: unknown, index: number): asserts day is DayRecord {
+  assertDayRecord(day, `backup day ${index + 1}`);
+  return;
   if (!day || typeof day !== "object" || Array.isArray(day)) {
     throw new Error(`백업 ${index + 1}번째 날짜 기록이 객체가 아닙니다.`);
   }
-  const record = day as Partial<DayRecord>;
+  const record = day as DayRecord;
   if (record.schemaVersion !== 1 || typeof record.id !== "string") {
     throw new Error(`백업 ${index + 1}번째 날짜 기록의 기본 정보가 손상됐습니다.`);
   }

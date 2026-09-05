@@ -64,6 +64,9 @@ export function calculateZone(
     zoneId,
   );
   const end = findEventTime(dayRecord, zone?.endEventId, "zone_end", zoneId);
+  const endEvent = zone?.endEventId
+    ? dayRecord.timeline.find((event) => event.id === zone.endEventId)
+    : sortTimeline(dayRecord.timeline).find((event) => event.zoneId === zoneId && event.type === "zone_end");
   const counts = calculateZoneCounts(zoneEvents, sourceEventIds);
 
   warnIfMissing(warnings, zoneId, "zone_start", start, zone?.startEventId);
@@ -83,7 +86,30 @@ export function calculateZone(
   const eventMinutes = calculateIncidentMinutes(zoneEvents, sourceEventIds);
   const deliveryMinutes =
     baseDeliveryMinutes === undefined ? undefined : Math.max(0, baseDeliveryMinutes - eventMinutes);
-  const efficiencyPerHour = calculateEfficiencyPerHour(counts.delivered, deliveryMinutes);
+  const helperCounts = calculateReceivedHelperCounts(dayRecord);
+  const efficiencyCount = Math.max(0, counts.delivered - (helperCounts.zoneFreeByZone.get(zoneId) ?? 0));
+  const efficiencyPerHour = calculateEfficiencyPerHour(efficiencyCount, deliveryMinutes);
+  const hasCompletedZoneRecord = dayRecord.timeline.some(
+    (event) => event.zoneId === zoneId && event.type === "zone_end",
+  );
+
+  if (hasCompletedZoneRecord && counts.delivered > 0 && (deliveryMinutes === undefined || deliveryMinutes < 1)) {
+    const zoneName = zone?.name ?? zoneId;
+    warnings.push({
+      code: deliveryMinutes === undefined ? "indeterminate_delivery_time" : "delivery_time_under_minute",
+      message: deliveryMinutes === undefined
+        ? zoneName + " 배송 효율 시간 확인 필요"
+        : zoneName + " 배송 효율 시간이 1분 미만",
+      zoneId,
+    });
+  }
+  warnIfInconsistentMijuDetails(
+    warnings,
+    zone?.name ?? zoneId,
+    zoneId,
+    endEvent,
+    zone?.id === "miju" || zone?.name === "미주" || zone?.name.toLowerCase() === "miju",
+  );
 
   return {
     zoneId,
@@ -93,6 +119,7 @@ export function calculateZone(
     deliveryMinutes,
     eventMinutes,
     counts,
+    efficiencyCount,
     efficiencyPerHour,
     sourceEventIds: [...sourceEventIds],
   };
@@ -116,7 +143,14 @@ function calculateTotals(
   const helperCounts = calculateReceivedHelperCounts(dayRecord);
   const separateHelperCount = helperCounts.separateFree + helperCounts.separatePaid;
   const deliveredCount = zoneDeliveredCount + separateHelperCount;
-  const efficiencyCount = zoneDeliveredCount + helperCounts.separatePaid;
+  const zoneEfficiencyCount = zones.reduce(
+    (sum, zone) => sum + Math.max(0, zone.counts.delivered - (helperCounts.zoneFreeByZone.get(zone.zoneId) ?? 0)),
+    0,
+  );
+  const efficiencyCount = zoneEfficiencyCount + helperCounts.separatePaid;
+  const hasUnreliableZoneTime = zones.some(
+    (zone) => zone.counts.delivered > 0 && (zone.deliveryMinutes === undefined || zone.deliveryMinutes < 1),
+  );
 
   return {
     totalCount: zoneTotalCount + separateHelperCount,
@@ -130,7 +164,9 @@ function calculateTotals(
     extraCount: sumDefined(zones.map((zone) => zone.counts.extra)),
     totalElapsedMinutes: diffMinutes(firstEvent?.at, closeEvent?.at),
     deliveryMinutes,
-    efficiencyPerHour: calculateEfficiencyPerHour(efficiencyCount, deliveryMinutes),
+    efficiencyPerHour: hasUnreliableZoneTime
+      ? undefined
+      : calculateEfficiencyPerHour(efficiencyCount, deliveryMinutes),
   };
 }
 
@@ -141,8 +177,17 @@ function calculateReceivedHelperCounts(dayRecord: DayRecord): {
   separatePaid: number;
   zoneFree: number;
   zonePaid: number;
+  zoneFreeByZone: Map<string, number>;
 } {
-  const counts = { free: 0, paid: 0, separateFree: 0, separatePaid: 0, zoneFree: 0, zonePaid: 0 };
+  const counts = {
+    free: 0,
+    paid: 0,
+    separateFree: 0,
+    separatePaid: 0,
+    zoneFree: 0,
+    zonePaid: 0,
+    zoneFreeByZone: new Map<string, number>(),
+  };
   for (const event of dayRecord.timeline) {
     if (event.type !== "helper_add" || !event.payload) continue;
     const payload = event.payload as {
@@ -163,7 +208,13 @@ function calculateReceivedHelperCounts(dayRecord: DayRecord): {
     }
     if (payload.helperKind === "free_received") {
       counts.free += quantity;
-      if (isZoneContribution) counts.zoneFree += quantity;
+      if (isZoneContribution) {
+        counts.zoneFree += quantity;
+        counts.zoneFreeByZone.set(
+          payload.sourceZoneId as string,
+          (counts.zoneFreeByZone.get(payload.sourceZoneId as string) ?? 0) + quantity,
+        );
+      }
       else counts.separateFree += quantity;
     }
   }
@@ -379,42 +430,74 @@ function calculateDeliveryMinutes(input: {
   const sortingEndMs = sortingEnd ? Date.parse(sortingEnd) : undefined;
   const deliveryStartMs = deliveryStart ? Date.parse(deliveryStart) : undefined;
 
-  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) {
+  if (
+    Number.isNaN(startMs) ||
+    Number.isNaN(endMs) ||
+    endMs < startMs ||
+    (sortingStart !== undefined && Number.isNaN(sortingStartMs)) ||
+    (sortingEnd !== undefined && Number.isNaN(sortingEndMs)) ||
+    (deliveryStart !== undefined && Number.isNaN(deliveryStartMs)) ||
+    (sortingStart !== undefined && sortingEnd === undefined) ||
+    (sortingEnd !== undefined && sortingStart === undefined)
+  ) {
     return undefined;
   }
 
-  if (deliveryStartMs !== undefined && !Number.isNaN(deliveryStartMs)) {
-    if (
-      sortingStartMs !== undefined &&
-      !Number.isNaN(sortingStartMs) &&
-      sortingStartMs > deliveryStartMs &&
-      sortingStartMs <= endMs
-    ) {
-      return (sortingStartMs - deliveryStartMs) / 60000;
-    }
-
-    return endMs >= deliveryStartMs ? (endMs - deliveryStartMs) / 60000 : undefined;
+  if (
+    (sortingStartMs !== undefined && sortingStartMs < startMs) ||
+    (sortingEndMs !== undefined && sortingEndMs > endMs) ||
+    (sortingStartMs !== undefined && sortingEndMs !== undefined && sortingEndMs < sortingStartMs) ||
+    (deliveryStartMs !== undefined && (deliveryStartMs < startMs || deliveryStartMs > endMs))
+  ) {
+    return undefined;
   }
 
-  if (
-    sortingStartMs !== undefined &&
-    sortingEndMs !== undefined &&
-    !Number.isNaN(sortingStartMs) &&
-    !Number.isNaN(sortingEndMs) &&
-    sortingStartMs >= startMs &&
-    sortingEndMs <= endMs
-  ) {
+  if (deliveryStartMs !== undefined) {
+    const elapsed = endMs - deliveryStartMs;
+    if (sortingStartMs === undefined || sortingEndMs === undefined) {
+      return elapsed / 60000;
+    }
+    const sortingOverlap = Math.max(
+      0,
+      Math.min(endMs, sortingEndMs) - Math.max(deliveryStartMs, sortingStartMs),
+    );
+    const movement = deliveryStartMs <= sortingStartMs ? (movementMinutes ?? 0) * 60000 : 0;
+    return Math.max(0, (elapsed - sortingOverlap - movement) / 60000);
+  }
+
+  if (sortingStartMs !== undefined && sortingEndMs !== undefined) {
     const elapsed = endMs - startMs;
     const sorting = sortingEndMs - sortingStartMs;
     const movement = (movementMinutes ?? 0) * 60000;
-    if (sorting < 0 || elapsed < sorting) {
-      return undefined;
-    }
-
     return Math.max(0, (elapsed - sorting - movement) / 60000);
   }
 
   return (endMs - startMs) / 60000;
+}
+
+function warnIfInconsistentMijuDetails(
+  warnings: CalculationWarning[],
+  zoneName: string,
+  zoneId: string,
+  endEvent: TimelineEvent | undefined,
+  isMiju: boolean,
+): void {
+  if (!isMiju) return;
+  const payload = endEvent?.payload as { total?: unknown; aTotal?: unknown } | undefined;
+  if (
+    typeof payload?.total !== "number" ||
+    !Number.isFinite(payload.total) ||
+    typeof payload.aTotal !== "number" ||
+    !Number.isFinite(payload.aTotal) ||
+    payload.total >= payload.aTotal
+  ) {
+    return;
+  }
+  warnings.push({
+    code: "miju_detail_inconsistent",
+    message: zoneName + " 미주 상세 수량 확인 필요",
+    zoneId,
+  });
 }
 
 function sumDefined(values: Array<number | undefined>): number {

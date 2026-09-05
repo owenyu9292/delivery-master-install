@@ -1,5 +1,4 @@
 import type { DayRecord } from "../domain/types";
-import { createBackupCopyDay } from "./backupImportExport";
 import {
   PHONE_INSTALL_BACKUP_APP,
   PHONE_INSTALL_BACKUP_TYPE,
@@ -18,12 +17,15 @@ import {
   type ResetResult,
   type SaveResult,
 } from "./dayStore";
+import { assertDayRecord } from "./recordValidation";
+import { buildImportPlan } from "./importPlan";
 
 export class MemoryDayStore implements DayStore {
   private readonly days = new Map<string, DayRecord>();
 
   constructor(initialDays: DayRecord[] = []) {
     for (const day of initialDays) {
+      assertDayRecord(day, "Memory day record");
       this.days.set(day.date, cloneDayRecord(day));
     }
   }
@@ -40,6 +42,7 @@ export class MemoryDayStore implements DayStore {
   }
 
   async saveDay(dayRecord: DayRecord): Promise<SaveResult> {
+    assertDayRecord(dayRecord, "Memory day record");
     const created = !this.days.has(dayRecord.date);
     this.days.set(dayRecord.date, cloneDayRecord(dayRecord));
 
@@ -81,81 +84,19 @@ export class MemoryDayStore implements DayStore {
     options: ImportOptions = { mode: "preview" },
   ): Promise<ImportResult> {
     assertPhoneInstallBackup(file);
-    const backup = cloneBackupFile(file);
-    const imported: DateSummary[] = [];
-    const skipped: ImportResult["skipped"] = [];
-
-    for (const day of backup.days) {
-      const existing = this.days.get(day.date);
-
-      if (options.mode === "preview") {
-        if (existing) {
-          skipped.push({
-            date: day.date,
-            reason: "existing_day_preview",
-            existingUpdatedAt: existing.meta.updatedAt,
-            incomingUpdatedAt: day.meta.updatedAt,
-          });
-        } else {
-          imported.push(createDateSummary(day));
-        }
-        continue;
-      }
-
-      if (existing && options.mode === "skip") {
-
-
-        skipped.push({
-
-
-          date: day.date,
-
-
-          reason: "existing_day_preserved",
-
-
-          existingUpdatedAt: existing.meta.updatedAt,
-
-
-          incomingUpdatedAt: day.meta.updatedAt,
-
-
-        });
-
-
-        continue;
-
-
-      }
-
-
-
-      if (existing && options.mode === "copy") {
-        const copy = createBackupCopyDay(day);
-        this.days.set(copy.date, copy);
-        imported.push(createDateSummary(copy));
-        continue;
-      }
-
-      if (existing && options.mode !== "overwrite") {
-        skipped.push({
-          date: day.date,
-          reason: "existing_day_requires_copy_or_overwrite",
-          existingUpdatedAt: existing.meta.updatedAt,
-          incomingUpdatedAt: day.meta.updatedAt,
-        });
-        continue;
-      }
-
-      this.days.set(day.date, cloneDayRecord(day));
-      imported.push(createDateSummary(day));
+    const existing = [...this.days.values()];
+    existing.forEach((day) => assertDayRecord(day, "Memory existing day record"));
+    const plan = buildImportPlan(cloneBackupFile(file), existing, options.mode);
+    if (options.mode === "preview" || plan.writes.length === 0) return plan.result;
+    const snapshot = new Map([...this.days.entries()].map(([date, day]) => [date, cloneDayRecord(day)]));
+    try {
+      plan.writes.forEach((day) => this.days.set(day.date, cloneDayRecord(day)));
+      return plan.result;
+    } catch (error) {
+      this.days.clear();
+      snapshot.forEach((day, date) => this.days.set(date, day));
+      throw error;
     }
-
-    return {
-      mode: options.mode,
-      imported,
-      skipped,
-      preview: options.mode === "preview",
-    };
   }
+
 }

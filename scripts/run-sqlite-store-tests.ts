@@ -6,8 +6,19 @@ import { sampleDayRecord } from "../test/fixtures/sample-day-record";
 class FakeSqliteDriver implements SqliteDriver {
   private readonly rows = new Map<string, SqliteRow>();
   private opened = false;
+  private transactionSnapshot: Map<string, SqliteRow> | null = null;
   async open(): Promise<void> { this.opened = true; }
   async close(): Promise<void> { this.opened = false; }
+  async beginTransaction(): Promise<void> {
+    this.transactionSnapshot = new Map([...this.rows.entries()].map(([key, row]) => [key, structuredClone(row)]));
+  }
+  async commitTransaction(): Promise<void> { this.transactionSnapshot = null; }
+  async rollbackTransaction(): Promise<void> {
+    if (!this.transactionSnapshot) return;
+    this.rows.clear();
+    this.transactionSnapshot.forEach((row, key) => this.rows.set(key, structuredClone(row)));
+    this.transactionSnapshot = null;
+  }
   async execute(statements: string): Promise<void> {
     assert.equal(this.opened, true);
     if (statements.includes("DELETE FROM day_records")) this.rows.clear();

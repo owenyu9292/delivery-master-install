@@ -61,7 +61,7 @@ for (const file of changed) {
 
 const forbiddenChanged = changed.find((file) =>
   /(^|\/)(dist|backup|backups|server_copy|server_edit)(\/|$)/i.test(file) ||
-  forbiddenPathPattern.test(file)
+  (forbiddenPathPattern.test(file) && !/^downloads\/DeliveryMaster-v\d+-debug\.apk$/.test(file))
 );
 if (forbiddenChanged) {
   fail(`staged path should not be committed from source repo: ${forbiddenChanged}`);

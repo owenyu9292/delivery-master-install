@@ -866,11 +866,17 @@ select {
   }
 
   .period-nav {
-    grid-template-columns: 1fr;
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
   }
 
   .period-nav strong {
-    order: -1;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+
+  .period-nav button {
+    padding: 0;
+    min-height: 48px;
   }
 
   .stats-grid {
@@ -914,6 +920,35 @@ select {
   background: #eff6ff;
 }
 
+.handling-control {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #d5dce3;
+}
+
+.handling-control input {
+  min-width: 0;
+  width: 0;
+  flex: 1;
+}
+
+.handling-fields {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.handling-fields button {
+  min-height: 48px;
+  padding: 12px 16px;
+  white-space: nowrap;
+}
+
+.handling-status {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
 .timeline-entry-head {
   display: flex;
   align-items: flex-start;
@@ -927,9 +962,9 @@ select {
 }
 
 .timeline-edit-btn {
-  min-width: 36px;
-  width: 36px;
-  min-height: 36px;
+  min-width: 48px;
+  width: 48px;
+  min-height: 48px;
   padding: 0;
   border: 1px solid #cbd5e1;
   border-radius: 999px;
@@ -937,7 +972,7 @@ select {
   color: #334155;
   font-size: 16px;
   line-height: 1;
-  flex: 0 0 36px;
+  flex: 0 0 48px;
 }
 
 .timeline-edit-btn.active {
@@ -985,11 +1020,11 @@ select {
 
 @media (max-width: 640px) {
   .timeline-entry-head {
-    flex-direction: column;
+    flex-direction: row;
   }
 
   .timeline-edit-btn {
-    align-self: flex-end;
+    align-self: flex-start;
   }
 
   .log-inline-grid {

@@ -29,7 +29,8 @@ export function buildDailyReport(
   const arrive = firstEvent(dayRecord, "arrive_cheongnyangni");
   const close = lastEvent(dayRecord, "day_close");
   const driveMinutes = diffMinutes(depart?.at, arrive?.at);
-  const regularEfficiency = calculation.totals.efficiencyPerHour;
+  const totalEfficiency = calculation.totals.efficiencyPerHour;
+  const regularEfficiency = calculateRegularEfficiency(dayRecord, calculation);
   const title = options.title ?? "일일 택배 마스터 Report";
 
   const lines = [
@@ -46,7 +47,7 @@ export function buildDailyReport(
     `전체 업무:   진접 ${formatClock(depart?.at)} 출발`,
     `             최종 종료 ${formatClock(close?.at)}`,
     `순수 운전:   진접→청량리 ${formatMinutes(driveMinutes)}`,
-    `전체 평균:   시간당 ${formatWholeEfficiency(regularEfficiency)}`,
+    `전체 평균:   시간당 ${formatWholeEfficiency(totalEfficiency)}`,
     "",
     "[구역별 상세]",
     ...calculation.zones.flatMap((zone, index) => buildZoneDetailLines(dayRecord, zone, index)),
@@ -99,6 +100,28 @@ function buildHelperSummaryLines(calculation: DayCalculation): string[] {
   if (zoneFree > 0) lines.push(`             구역 동행 무료 ${zoneFree}개 (총량 중복 제외)`);
   if (zonePaid > 0) lines.push(`             구역 동행 유료 ${zonePaid}개 (총량 중복 제외)`);
   return lines;
+}
+
+function calculateRegularEfficiency(dayRecord: DayRecord, calculation: DayCalculation): number | undefined {
+  const completedZones = calculation.zones.filter((zone) =>
+    !isAlternativeZone(zone.zoneId) &&
+    firstZoneEvent(dayRecord, zone.zoneId, "zone_end") !== undefined,
+  );
+  if (completedZones.length === 0) return undefined;
+  if (completedZones.some((zone) =>
+    zone.efficiencyCount === undefined ||
+    zone.deliveryMinutes === undefined ||
+    zone.deliveryMinutes < 1
+  )) {
+    return undefined;
+  }
+  const minutes = completedZones.reduce((sum, zone) => sum + zone.deliveryMinutes!, 0);
+  const count = completedZones.reduce((sum, zone) => sum + zone.efficiencyCount!, 0);
+  return calculateEfficiency(count, minutes);
+}
+
+function isAlternativeZone(zoneId: string): boolean {
+  return zoneId.startsWith("alt-");
 }
 
 export function buildPreviewModel(

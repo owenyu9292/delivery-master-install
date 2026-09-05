@@ -3,7 +3,6 @@ import {
   PHONE_INSTALL_BACKUP_APP,
   PHONE_INSTALL_BACKUP_TYPE,
   assertPhoneInstallBackup,
-  createBackupCopyDay,
 } from "./backupImportExport";
 import {
   cloneBackupFile,
@@ -18,6 +17,8 @@ import {
   type ResetResult,
   type SaveResult,
 } from "./dayStore";
+import { assertDayRecord } from "./recordValidation";
+import { buildImportPlan } from "./importPlan";
 
 const DEFAULT_DB_NAME = "delivery-master";
 const DEFAULT_STORE_NAME = "dayRecords";
@@ -50,7 +51,7 @@ export class IndexedDbDayStore implements DayStore {
     const days = await this.getAllDays();
 
     return days
-      .map(createDateSummary)
+      .map(safeDateSummary)
       .sort((a, b) => b.date.localeCompare(a.date));
   }
 
@@ -62,10 +63,13 @@ export class IndexedDbDayStore implements DayStore {
         .get(date),
     );
 
-    return day ? cloneDayRecord(day) : null;
+    if (!day) return null;
+    assertDayRecord(day, "IndexedDB day record");
+    return cloneDayRecord(day);
   }
 
   async saveDay(dayRecord: DayRecord): Promise<SaveResult> {
+    assertDayRecord(dayRecord, "IndexedDB day record");
     const db = await this.openDb();
     const tx = db.transaction(this.storeName, "readwrite");
     const store = tx.objectStore(this.storeName);
@@ -73,8 +77,15 @@ export class IndexedDbDayStore implements DayStore {
       store.get(dayRecord.date),
     );
 
-    await requestToPromise(store.put(cloneDayRecord(dayRecord)));
-    await transactionToPromise(tx);
+    const completion = transactionToPromise(tx);
+    try {
+      await requestToPromise(store.put(cloneDayRecord(dayRecord)));
+      await completion;
+    } catch (error) {
+      try { tx.abort(); } catch { /* transaction may already be aborting */ }
+      try { await completion; } catch { /* settle the transaction rejection */ }
+      throw error;
+    }
 
     return {
       date: dayRecord.date,
@@ -121,63 +132,24 @@ export class IndexedDbDayStore implements DayStore {
   ): Promise<ImportResult> {
     assertPhoneInstallBackup(file);
     const backup = cloneBackupFile(file);
-    const imported: DateSummary[] = [];
-    const skipped: ImportResult["skipped"] = [];
-
-    for (const day of backup.days) {
-      const existing = await this.getDay(day.date);
-
-      if (options.mode === "preview") {
-        if (existing) {
-          skipped.push({
-            date: day.date,
-            reason: "existing_day_preview",
-            existingUpdatedAt: existing.meta.updatedAt,
-            incomingUpdatedAt: day.meta.updatedAt,
-          });
-        } else {
-          imported.push(createDateSummary(day));
-        }
-        continue;
+    const db = await this.openDb();
+    const readTx = db.transaction(this.storeName, "readonly");
+    const existing = await requestToPromise<DayRecord[]>(readTx.objectStore(this.storeName).getAll());
+    const plan = buildImportPlan(backup, existing, options.mode);
+    if (options.mode !== "preview" && plan.writes.length > 0) {
+      const writeTx = db.transaction(this.storeName, "readwrite");
+      const store = writeTx.objectStore(this.storeName);
+      const completion = transactionToPromise(writeTx);
+      try {
+        plan.writes.forEach((day) => store.put(cloneDayRecord(day)));
+        await completion;
+      } catch (error) {
+        try { writeTx.abort(); } catch { /* transaction may already be aborting */ }
+        try { await completion; } catch { /* settle the transaction rejection */ }
+        throw error;
       }
-
-      if (existing && options.mode === "skip") {
-        skipped.push({
-          date: day.date,
-          reason: "existing_day_preserved",
-          existingUpdatedAt: existing.meta.updatedAt,
-          incomingUpdatedAt: day.meta.updatedAt,
-        });
-        continue;
-      }
-
-      if (existing && options.mode === "copy") {
-        const copy = createBackupCopyDay(day);
-        await this.saveDay(copy);
-        imported.push(createDateSummary(copy));
-        continue;
-      }
-
-      if (existing && options.mode !== "overwrite") {
-        skipped.push({
-          date: day.date,
-          reason: "existing_day_requires_copy_or_overwrite",
-          existingUpdatedAt: existing.meta.updatedAt,
-          incomingUpdatedAt: day.meta.updatedAt,
-        });
-        continue;
-      }
-
-      await this.saveDay(day);
-      imported.push(createDateSummary(day));
     }
-
-    return {
-      mode: options.mode,
-      imported,
-      skipped,
-      preview: options.mode === "preview",
-    };
+    return plan.result;
   }
 
   private async getAllDays(): Promise<DayRecord[]> {
@@ -250,4 +222,20 @@ function getBrowserIndexedDb(): IDBFactory {
   }
 
   return indexedDB;
+}
+
+function safeDateSummary(day: unknown): DateSummary {
+  try {
+    assertDayRecord(day, "IndexedDB day record");
+    return createDateSummary(day);
+  } catch {
+    const value = day && typeof day === "object" ? day as Record<string, any> : {};
+    return {
+      date: typeof value.date === "string" ? value.date : "unknown",
+      status: "reviewNeeded",
+      eventCount: Array.isArray(value.timeline) ? value.timeline.length : 0,
+      updatedAt: value.meta && typeof value.meta.updatedAt === "string" ? value.meta.updatedAt : "",
+      recoveryStatus: "needsReview",
+    };
+  }
 }

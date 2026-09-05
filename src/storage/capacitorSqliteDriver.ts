@@ -39,15 +39,27 @@ export class CapacitorSqliteDriver implements SqliteDriver {
     }
   }
 
+  async beginTransaction(): Promise<void> {
+    await this.requireDb().beginTransaction();
+  }
+
+  async commitTransaction(): Promise<void> {
+    await this.requireDb().commitTransaction();
+  }
+
+  async rollbackTransaction(): Promise<void> {
+    await this.requireDb().rollbackTransaction();
+  }
+
   async query(statement: string, values: SqliteValue[] = []): Promise<SqliteRow[]> {
     const db = this.requireDb();
     const result = await db.query(statement, values);
     return (result.values ?? []) as SqliteRow[];
   }
 
-  async run(statement: string, values: SqliteValue[] = []): Promise<void> {
+  async run(statement: string, values: SqliteValue[] = [], transaction = true): Promise<void> {
     const db = this.requireDb();
-    await db.run(statement, values, true, "no");
+    await db.run(statement, values, transaction, "no");
   }
 
   async execute(statements: string): Promise<void> {

@@ -40,6 +40,13 @@ export interface BackupFile {
   appVersion?: string;
   scope: BackupScope;
   days: DayRecord[];
+  corruptDays?: CorruptDayRecord[];
+}
+
+export interface CorruptDayRecord {
+  kind: "corrupt-day-record";
+  date: string;
+  rawCorruptJson: string;
 }
 
 export interface ImportOptions {
