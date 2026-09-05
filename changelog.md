@@ -1,9 +1,12 @@
-# v35 - 2026-09-05 배포 준비
+# v35 - 2026-09-05 배포 완료
 
 - 사용자 배포 승인 후 Android versionCode8/versionName0.2.34 및 화면v35로 갱신했다.
 - APK: downloads/DeliveryMaster-v35-debug.apk. v34와 동일 패키지/서명 확인. 검수한 dist와 APK 내장 코드·CSS·HTML 해시 일치.
 - 빌드/자동/숨김 브라우저 검수 통과. 상세 증거는 VERIFICATION_v35.md, 사용자 배포 안내는 RELEASE_v35.md.
-- GitHub Release 게시 절차 진행 중. 실제 휴대폰은 미연결로 설치하지 않았다.
+- 소스/APK 커밋541eaf0, 태그v35, GitHub Release 게시 및 비로그인 다운로드 해시 일치 확인 완료. 실제 휴대폰은 미연결로 설치하지 않았다.
+- 배포 페이지: https://github.com/owenyu9292/delivery-master-install/releases/tag/v35
+- 기존 pre-commit 훅을 repo에 연결하고 허가된 downloads/DeliveryMaster-v숫자-debug.apk만 경로 검사에서 허용했다. 훅 검사 통과 후 커밋했다.
+- 아래 미배포 문구는 각 작업 당시 기록이며 이 배포 완료 절이 현재 상태다.
 
 # 당시 미배포 - 2026-09-05 데이터 보존·정정 안정화
 

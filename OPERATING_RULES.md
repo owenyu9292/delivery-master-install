@@ -28,7 +28,7 @@
 
 - 이후 정식 앱 배포는 **GitHub APK 다운로드·업데이트 설치**만 사용한다.
 - 사용자에게 APK를 전달할 때는 직접 APK/raw 링크가 아니라 **GitHub Release 페이지 링크**를 제공한다. 폰에서는 Release 페이지의 Assets에서 APK를 누르게 안내한다.
-- 현재 v32 Release 페이지는 https://github.com/owenyu9292/delivery-master-install/releases/tag/v32이다.
+- 현재 v35 Release 페이지는 https://github.com/owenyu9292/delivery-master-install/releases/tag/v35 이다. Assets의 DeliveryMaster-v35-debug.apk를 기존 앱 삭제 없이 업데이트 설치한다.
 - USB/ADB는 실기기 검수 또는 긴급 진단용이며, 일반 사용자 배포 경로가 아니다.
 - GitHub 업로드 전에는 코드 검사, 빌드, 문서·APK 버전·해시 대조를 완료한다.
 - 기존 앱 삭제 없이 같은 package ID와 서명을 유지한 APK로 업데이트 설치한다.

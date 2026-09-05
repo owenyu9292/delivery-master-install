@@ -1,6 +1,9 @@
-# 2026-09-05 v35 배포 (진행 중)
+# 2026-09-05 v35 배포 완료
 
-- 사용자 승인: 배포하고 마무리까지. 커밋·푸시·Android 패키징·GitHub Release 공개를 진행한다. PWA 게시본은 보호한다.
+- 사용자 승인: 배포하고 마무리까지. 기록자 main. 커밋·푸시·Android 패키징·GitHub Release 공개 완료. PWA 게시본과 main은 변경하지 않았다.
+- 소스/APK 커밋 541eaf0, 태그 v35. https://github.com/owenyu9292/delivery-master-install/releases/tag/v35
+- 비로그인 APK 다운로드 25,388,917바이트, SHA-256 529C6D2323103BB908C7202EF330A59947284C07B1A71A860D0F43D9FEED07D2 일치. 검수 증거: VERIFICATION_v35.md.
+- 아래 절은 당시 진행 기록이며 현재 배포 상태는 이 절을 기준으로 한다. Fold7 실제 설치·파일 왕복 확인은 미연결로 남겨 둔다.
 - 버전: v35 / Android versionCode8 / versionName0.2.34. 패키지 ID와 기존 debug 서명 유지.
 - 빌드·서명·태그·업로드가 순차 의존하므로 이번 배포 단계는 코기가 직접 수행한다. 직전 구현은 Luna 두 명과 통합 검수했다.
 - 실기기 데이터는 건드리지 않는다. 실제 Fold7 설치 후 확인 여부는 배포 완료와 분리해 기록한다.

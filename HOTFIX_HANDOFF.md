@@ -1,10 +1,11 @@
 # 현재 인수인계 (2026-09-05)
 
 - 유일한 수정 대상: Android 인스톨 버전. 기존 개발앱 PWA 게시본 및 v1/season2는 원본 보관이며 수정·배포하지 않는다.
-- repo: C:\Codex55Workspace\delivery-master\delivery-master-install-deploy / 브랜치 codex/hils-handling-minutes / 기준 커밋 35af4fc.
-- 현재 상태: 소스 수정·로컬 가혹 검수 완료 / 미커밋·미배포. 실제 설치 버전은 사용자 대화에서 v34 표시 확인. 아래 변경은 APK/버전/배포 파일에는 아직 없다.
+- repo: C:\Codex55Workspace\delivery-master\delivery-master-install-deploy / 브랜치 codex/hils-handling-minutes / v35 소스·APK 커밋 541eaf0.
+- 현재 상태: v35 GitHub Release 배포 완료. Android versionCode8/versionName0.2.34. 실제 폰은 마지막 사용자 확인 v34이며 이번에는 미연결로 설치하지 않았다.
 - 검수 증거 및 다음 관문: VERIFICATION_2026-09-05.md. npm run check, 실제 SQLite 파일 재개방/실패6종, 최종 숨김 브라우저22개 묶음, 기존 smoke 및 대체배송10개 경로 통과. Android 플러그인·실제 Fold7 설치 검수는 별도다.
-- 공유 보드: todo.md/progress.md/unresolved.md/changelog.md. 핫픽스는 별도 칸반을 만들지 않고 기록자 hotfix로 남긴다. 이번 커밋/푸시/패키징/설치는 실행하지 않았다.
+- 공유 보드: todo.md/progress.md/unresolved.md/changelog.md. 핫픽스는 별도 칸반을 만들지 않고 기록자 hotfix로 남긴다. 커밋·푸시·패키징·공개 다운로드 해시 검증 완료, 폰 설치만 미실행.
+- 배포: https://github.com/owenyu9292/delivery-master-install/releases/tag/v35 → Assets의 DeliveryMaster-v35-debug.apk. 직접 APK 링크 대신 이 페이지를 전달한다. 상세 증거: VERIFICATION_v35.md.
 - 아래 v34 이하 절은 당시 작업 기록이다. 과거 미배포/USB/PWA 운영 문구보다 이 절과 OPERATING_RULES.md가 우선한다.
 
 ## 최신 5건 요약
@@ -13,7 +14,7 @@
 2. 저장/복구: 내부 구조 검증, 다중 날짜 전체취소, 실패 뒤 입력/원본 보존. 손상 기록 초기화 금지, raw 원문 보관·유효한 백업으로 선택 복구. 후속 스냅샷 실패는 실제 반영 건수와 구분.
 3. 계산/정정: 무료 도우미 효율 제외, 미주 총량 정정 B 재계산, 누락 정리 완료와 자동 배송시작 연결, 시간 불명확 시 효율 미확정. 통계 가중 효율·대체배송 제외 정규 효율 수정.
 4. 현장 UI: 남은 구역 순서 변경, 자정 이전업무/오늘 선택, 종료 로그 시간 수정, 미저장 초안 복원, 같은 분 로그 업무 순서, 연필48px, 주/월 가로 이동과 비율 우선.
-5. 검수/인계: 별도 Chrome 프로필·411x762 DPR2.63/360폭·임시 DB 사용. 기존 PWA·폰 자료·배포물 미변경. 다음은 승인 후 APK 패키징→백업→업데이트 설치→Fold7 SQLite/파일 왕복 검수다.
+5. 검수/인계: 별도 Chrome 프로필·411x762 DPR2.63/360폭·임시 DB 검수 통과. v35 APK 공개 다운로드와 SHA-256 일치 확인. 기존 PWA·폰 자료는 미변경. 다음은 전체 백업→기존 앱 삭제 없이 업데이트→Fold7 SQLite/파일 왕복 확인이다.
 
 # v34 과거 작업 기록 (2026-08-23)
 
