@@ -1,3 +1,12 @@
+# 2026-09-09 프로젝트 강제 규칙 해제
+
+- instruction.md를 인스톨판만 수정하는 기준과 코기 판단 방식으로 단순화. OPERATING_RULES.md는 같은 기준으로 연결.
+- 기존 두 규칙 문서는 docs/history/2026-09-09-rules-retired/에 원문 보관. 과거 규칙의 효력은 종료.
+- README.md, FIELD_REQUIREMENTS.md, TASKS.md의 반복 승인 절차 제거. HOTFIX_HANDOFF.md와 작업 보드에 현재 기준 안내.
+- .githooks/pre-commit은 성공 종료만 하도록 변경하고 scripts/codex-precommit-check.mjs는 비활성화 안내만 출력. 기존 npm 명령 호환 유지.
+- 검증 완료: git diff --check, 이전 규칙 원문 보존, UTF-8, 앱 파일 무변경, check:codex 비활성화 안내 확인.
+- 후속 사용자 지시로 커밋·푸시 승인. 이번 변경은 문서·훅뿐이므로 APK는 기존 공개 v35를 유지한다. 디자인 시안·폰트는 앱 미반영이며 새 앱 배포로 보고하지 않는다.
+
 # v35 - 2026-09-05 배포 완료
 
 - 사용자 배포 승인 후 Android versionCode8/versionName0.2.34 및 화면v35로 갱신했다.

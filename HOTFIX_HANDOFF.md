@@ -1,4 +1,11 @@
-# 현재 인수인계 (2026-09-05)
+> 2026-09-09: 현재 작업 기준은 `instruction.md`이다. 이 문서의 과거 승인·작업 절차·모델·배포 규정은 강제하지 않는다. 기능 및 작업 이력은 참고용으로 보존하며, 수정 대상은 Android 인스톨판뿐이다.
+
+# 작업 기준 갱신 (2026-09-09)
+
+- 기존 프로젝트 강제 절차는 해제했다. instruction.md 기준으로 Android 인스톨판만 수정하고 그 외 진행 방식은 코기가 판단한다.
+- 이번 변경은 문서·작업 훅뿐이다. 앱 소스·APK는 v35 유지이며 디자인 시안·폰트 요청은 아직 앱에 반영하지 않았다.
+
+# 앱 인수인계 (2026-09-05 기준)
 
 - 유일한 수정 대상: Android 인스톨 버전. 기존 개발앱 PWA 게시본 및 v1/season2는 원본 보관이며 수정·배포하지 않는다.
 - repo: C:\Codex55Workspace\delivery-master\delivery-master-install-deploy / 브랜치 codex/hils-handling-minutes / v35 소스·APK 커밋 541eaf0.

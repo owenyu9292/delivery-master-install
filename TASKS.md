@@ -1,12 +1,8 @@
+> 2026-09-09: 현재 작업 기준은 `instruction.md`이다. 이 문서의 과거 승인·작업 절차·모델·배포 규정은 강제하지 않는다. 기능 및 작업 이력은 참고용으로 보존하며, 수정 대상은 Android 인스톨판뿐이다.
+
 # delivery-master-install task list
 
 Last updated: 2026-05-25
-
-## 00. Operating Rule: Report Before Action
-
-- Before coding, file creation, folder creation, document updates, GitHub upload, commit, push, deployment, or fallback-path decisions, report the intended action and wait for user approval.
-- If the intended folder or repository does not exist, stop. Do not create a different lower-level folder as a workaround.
-- When a task requires a new location or permission, ask the user to create it or explicitly approve the exact action.
 
 ## Done
 

@@ -1,14 +1,6 @@
+> 2026-09-09: 현재 작업 기준은 `instruction.md`이다. 이 문서의 과거 승인·작업 절차·모델·배포 규정은 강제하지 않는다. 기능 및 작업 이력은 참고용으로 보존하며, 수정 대상은 Android 인스톨판뿐이다.
+
 # delivery-master-install
-
-> **현재 효력 규칙:** `OPERATING_RULES.md`가 이 문서의 과거 PWA·GitHub Pages 설명보다 우선합니다. 정식 제품은 Android 인스톨 앱이며, 일반 배포는 GitHub APK 다운로드·업데이트 설치만 사용합니다.
-
-## 00. Operating Rule: Report Before Action
-
-All coding, file creation, folder creation, document updates, GitHub upload, commit, push, deployment, and fallback-path decisions must be reported to the user first and executed only after approval.
-
-- Do not create substitute folders or alternate paths when the intended path is missing.
-- If a folder, repository, or permission is missing, stop and ask the user to create or approve it.
-- Keep this rule above normal status notes so it is read before implementation details.
 
 ## Current Folder Role
 

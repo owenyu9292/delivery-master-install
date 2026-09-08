@@ -1,14 +1,8 @@
+> 2026-09-09: 현재 작업 기준은 `instruction.md`이다. 이 문서의 과거 승인·작업 절차·모델·배포 규정은 강제하지 않는다. 기능 및 작업 이력은 참고용으로 보존하며, 수정 대상은 Android 인스톨판뿐이다.
+
 # Field Requirements
 
 Last updated: 2026-05-25
-
-## 00. Operating Rule: Report Before Action
-
-All implementation work must report the intended change before execution and wait for approval. This includes code edits, file/folder creation, documentation updates, GitHub upload, commits, pushes, deployments, and fallback-path choices.
-
-If the intended folder, repository, or permission is missing, stop and ask the user. Do not create a different lower-level folder or alternate route without approval.
-
-This file is the handoff point between the temporary Season2 PWA field version and the formal phoneInstall build.
 
 ## Product Split
 
