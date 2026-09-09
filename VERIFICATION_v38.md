@@ -26,4 +26,9 @@
 
 ## 공개 상태
 
-APK 로컬 검증 완료. 커밋·푸시·GitHub 공개 및 비로그인 다운로드 검증 결과는 실제 완료 후 아래에 기록한다.
+- 소스/APK 커밋 및 v38 태그: 4e6c352e0b4f2e4f4b7bceaeffd3f64455c23840.
+- GitHub Release ID 385388211, Asset ID 552448926. 공개 시각 2026-09-09T09:36:47Z.
+- 공개 페이지 https://github.com/owenyu9292/delivery-master-install/releases/tag/v38 . 직접 다운로드 대신 이 페이지를 전달한다.
+- 비로그인 페이지 HTTP200, APK HTTP200, 실제 다운로드25,447,490바이트 및 SHA-256 310079BB8721BAED0BF84C39A4F97599BB0968AA87F241A7027CBA17D2C9251E 일치.
+- 초안 릴리스에 업로드한 자산의 서버 측 SHA256 확인 후 공개했다. 공개 후 정식 v38 URL로 재조회하여 인증 없이 별도 다운로드했다.
+- 원격 main은 1119e923ad6b8bf53e389b890ff9ba2024132d40 유지. PWA 배포나 폰 자료 변경 없음.
