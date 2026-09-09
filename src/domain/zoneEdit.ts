@@ -127,15 +127,16 @@ function buildZoneEndPayload(
     : input.mijuA !== undefined || input.mijuB !== undefined
       ? (input.mijuA ?? 0) + (input.mijuB ?? 0)
     : input.delivered;
-  const previousA = numberOrOptional(previous.aTotal);
-  const previousB = numberOrOptional(previous.bTotal);
+  const buildings = [previous.building1Total, previous.building2Total, previous.building3Total].map(numberOrOptional);
+  const previousA = numberOrOptional(previous.aTotal) ??
+    (buildings.some(value => value !== undefined) ? buildings.reduce<number>((sum, value) => sum + (value ?? 0), 0) : undefined);
+  const previousB = numberOrOptional(previous.bTotal) ?? numberOrOptional(previous.restTotal) ?? numberOrOptional(previous.mijuRest);
   const suppliedBChanged = input.mijuB !== undefined && input.mijuB !== previousB;
   const shouldRecalculateRetainedB =
     isMiju &&
     !hasMijuBuildings &&
     input.delivered !== undefined &&
     previousA !== undefined &&
-    previousB !== undefined &&
     !suppliedBChanged;
 
   if (delivered === undefined && input.failed === undefined && input.extra === undefined) {

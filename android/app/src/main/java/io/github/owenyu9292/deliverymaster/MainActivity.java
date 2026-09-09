@@ -28,11 +28,19 @@ public class MainActivity extends BridgeActivity {
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         View content = findViewById(android.R.id.content);
         ViewCompat.setOnApplyWindowInsetsListener(content, (view, insets) -> {
-            Insets safe = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.ime()
-            );
+            int handledTypes = WindowInsetsCompat.Type.systemBars()
+                | WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.ime();
+            Insets safe = insets.getInsets(handledTypes);
             view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
-            return insets;
+            // The root has applied these insets. Passing them on pads the WebView twice.
+            // Explicit zeroes also let Chromium recalculate safe areas when IME closes.
+            return new WindowInsetsCompat.Builder(insets)
+                .setInsets(handledTypes, Insets.NONE)
+                .setInsetsIgnoringVisibility(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout(), Insets.NONE
+                )
+                .setVisible(handledTypes, false)
+                .build();
         });
         ViewCompat.requestApplyInsets(content);
     }

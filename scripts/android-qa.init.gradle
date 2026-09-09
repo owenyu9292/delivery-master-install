@@ -1,0 +1,14 @@
+// Only the explicit -I invocation creates this isolated on-device test package.
+gradle.beforeProject { project ->
+    project.plugins.withId('com.android.application') {
+        project.extensions.getByName('androidComponents').finalizeDsl { android ->
+            if (project.path != ':app') throw new GradleException('Unexpected QA project')
+            if (android.defaultConfig.applicationId != 'io.github.owenyu9292.deliverymaster') {
+                throw new GradleException('Unexpected production applicationId')
+            }
+            android.defaultConfig.applicationId = 'io.github.owenyu9292.deliverymaster.qa'
+            android.defaultConfig.resValue('string', 'app_name', '배송마스터 검수')
+            android.defaultConfig.resValue('string', 'title_activity_main', '배송마스터 검수')
+        }
+    }
+}

@@ -54,7 +54,7 @@ export async function runTimeChecks({ev,send,seed,fixture,read,click,input,tab,u
     await tab("work");await clock(11,0);await input("#hils-count","100");await click('[data-action="zone-end"]');
     day=await read();assert.equal(day.timeline.find(e=>e.type==="zone_end").payload.delivered,100);
     await edit(autoEnd,"09","30");
-    await tab("report");assert.match(await ev('document.querySelector(".report").innerText'),/실제 배송 소요: 1시간 30분/);
+    await tab("report");assert.match(await ev('document.querySelector(".report").innerText'),/실제 배송 소요\s+1시간 30분/);
     await shot("13-linked-corrected-report");
     checks.push("automatic boundary manual09:45->delivery09:50->reload->completion100->correct09:30; report90min, original start+completion unchanged");
 
@@ -88,7 +88,7 @@ export async function runTimeChecks({ev,send,seed,fixture,read,click,input,tab,u
     await click('[data-action="save-log-edit"][data-event="delivery"]');
     assert.equal(time(await read(),"sorting_end"),iso("09:45"));
     await edit("sorted","11","30");
-    await tab("report");assert.match(await ev('document.querySelector(".report").innerText'),/실제 효율: 시간당 -/);
+    await tab("report");assert.match(await ev('document.querySelector(".report").innerText'),/실제 효율\s+미확정/);
     assert.equal(time(await read(),"zone_end"),date+"T11:00:00+09:00");
     await edit("delivery","09","50");
     day=await read();assert.equal(time(day,"sorting_end"),iso("09:50"));assert.equal(day.timeline.find(e=>e.type==="zone_end").payload.delivered,100);

@@ -1,4 +1,6 @@
 node_modules/
+.device-backup/
+.device-qa/
 .chrome-review/
 .chrome-smoke/
 .chrome-smoke-*/

@@ -1,0 +1,28 @@
+{
+  "viewport": "411x762 DPR2.63 (+360)",
+  "checks": [
+    "default30-opt-in, count-draft-preserved, double-click, edit45, cancel0, reapply30",
+    "invalid-empty-negative-decimal-text-overlimit-infinity preserve stored30",
+    "reload retains stored30 and unsaved invalid input for correction",
+    "sorting20 plus handling30 = delivery70; report100 unchanged",
+    "completed-log60-cancel0-reapply45; no360overflow",
+    "add missed handling from completed-zone log; repeat update no duplicates/count changes",
+    "non-default hils zone ID uses independent record",
+    "draft survives tabs/reload; failed save preserves full day; retry/double-tap yields one event",
+    "day-close time can be edited and reopened repeatedly",
+    "log save failure keeps editor+120; reload retry saves; end before departure shows unknown; correction restores72perHour",
+    "forgot sorting finish: log adds09:30 and reanchors generated delivery start; 90min recovered",
+    "malformed nested backup rejected from real import UI without altering day",
+    "second IndexedDB put synchronous exception rolls back first overwrite and second day",
+    "IndexedDB transaction abort rolls back entire multi-day import",
+    "post-commit snapshot failure reports actual imported2, not false0",
+    "skip existing retains120 and truthfully reports zero new dates",
+    "corrupt history preserved in raw backup; other day opens; overwrite repairs selected date",
+    "corrupt today is not reset; recovery UI repairs from valid backup",
+    "pending zones reorder after completed first zone; repeated alternate addition; no duplicate DOM ids",
+    "midnight active-work choice preserves yesterday; opening today creates separate day",
+    "360px stats/log fit; all edit touch targets at least48x48",
+    "same-minute log follows arrival-zone start-sorting start-sorting end-delivery start"
+  ],
+  "errors": []
+}

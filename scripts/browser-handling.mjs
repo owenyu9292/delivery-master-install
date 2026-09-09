@@ -144,10 +144,10 @@ try {
   closed.timeline.push(handling(await read())[0]);
   await seed(closed); await tab("report");
   const report = await ev('document.querySelector(".report").innerText');
-  assert.match(report, /실제 배송 소요: 1시간 10분/);
-  assert.match(report, /정리:.*20분/);
-  assert.match(report, /이벤트: 30분/);
-  assert.match(report, /총 배송 수량: 100개/);
+  assert.match(report, /실제 배송 소요\s+1시간 10분/);
+  assert.match(report, /정리\s+[^\n]*20분/);
+  assert.match(report, /이벤트\s+30분/);
+  assert.equal(await ev('document.querySelector("[data-report=total]").textContent'),"100개");
   assert.match(report, /반품·선집화·상차/);
   checks.push("sorting20 plus handling30 = delivery70; report100 unchanged");
   let id = handling(await read())[0].id;

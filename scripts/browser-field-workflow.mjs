@@ -9,13 +9,20 @@ import { runSafetyChecks } from "./browser-safety-cases.mjs";
 import { runTimeChecks } from "./browser-time-cases.mjs";
 import { runCorrectionParity } from "./browser-correction-parity.mjs";
 import { runStatisticsChecks } from "./browser-statistics-cases.mjs";
+import { runNavigationChecks } from "./browser-navigation-cases.mjs";
+import { runReportChecks } from "./browser-report-cases.mjs";
+import { runKeyboardChecks } from "./browser-keyboard-cases.mjs";
+import { runBasicAudit } from "./browser-basic-audit.mjs";
+import { runInputSurfaces } from "./browser-input-surfaces.mjs";
 
 const output = await mkdtemp(join(tmpdir(), "delivery-field-v37-"));
 await cp("public", join(output, "web"), { recursive: true });
 await mkdir(join(output, "web/assets"), { recursive: true });
 await build({ entryPoints: ["src/app/main.ts"], bundle: true, format: "esm", target: "es2022", outfile: join(output, "web/assets/app.js"),
   plugins: [{ name: "isolated-safety-injection", setup(plugin) {
-    plugin.onLoad({ filter: /src[\\/]app[\\/]main\.ts$/ }, async args => ({ loader: "ts", contents: (await readFile(args.path, "utf8")).replace("const { store, platform } = runtime;", "const { store, platform } = runtime; (window as any).__deliverySafety = { runtime };") }));
+    plugin.onLoad({ filter: /src[\\/]app[\\/]main\.ts$/ }, async args => ({ loader: "ts", contents: (await readFile(args.path, "utf8"))
+      .replace("const { store, platform } = runtime;", "const { store, platform } = runtime; (window as any).__deliverySafety = { runtime, back: handleAppBack };")
+      .replace("nativeInsets: Capacitor.isNativePlatform()", process.env.NATIVE_LAYOUT === "1" ? "nativeInsets: true" : "nativeInsets: Capacitor.isNativePlatform()") }));
   } }] });
 const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
 const server = createServer(async (req, res) => {
@@ -26,7 +33,16 @@ const server = createServer(async (req, res) => {
     res.end(body);
   } catch { res.writeHead(404); res.end(); }
 });
-await new Promise(r => server.listen(0, "127.0.0.1", r));
+for (let attempt=0; ; attempt++) {
+  try {
+    await new Promise((resolve,reject)=>{
+      const failed=error=>reject(error);
+      server.once("error",failed);
+      server.listen(40000+Math.floor(Math.random()*10000),"127.0.0.1",()=>{server.off("error",failed);resolve();});
+    });
+    break;
+  } catch (error) { if(error.code!=="EADDRINUSE"||attempt>=19)throw error; }
+}
 const base = "http://127.0.0.1:" + server.address().port;
 const profile = join(output, "chrome");
 const chrome = spawn(process.env.CHROME_PATH || "C:/Program Files/Google/Chrome/Application/chrome.exe", [
@@ -148,7 +164,7 @@ try {
     await send("Emulation.setDeviceMetricsOverride",{width,height:762,deviceScaleFactor:2.63,mobile:true});
     assert.equal(await ev("document.documentElement.scrollWidth>innerWidth"),false,"horizontal overflow "+width);
   };
-  if (!process.env.TIME_ONLY && !process.env.STATS_ONLY) {
+  if (!process.env.TIME_ONLY && !process.env.STATS_ONLY && !process.env.UI_ONLY) {
   await seed(fixture());
   assert.equal(await ev('getComputedStyle(document.documentElement).fontFamily'),"sans-serif");
   assert.equal(await ev('document.querySelectorAll(".tabbar svg").length'),5);
@@ -243,7 +259,7 @@ try {
   await act("open-close-day");await act("confirm-close-day");await ready();assert.equal((await read()).status,"closed");
   assert.equal(dataCounts(await read()).reduce((a,b)=>a+b,0),90);
   await tab("log");await shot("07-log");
-  await tab("report");assert.match(await ev('document.querySelector(".report").innerText'),/총 배송 수량: 90개/);
+  await tab("report");assert.equal(await ev('document.querySelector("[data-report=total]").textContent'),"90개");
   await tab("stats");await noOverflow(360);await shot("08-stats-360");await noOverflow(411);
   await tab("backup");await shot("09-backup");
   checks.push("7 repeated alternates; reorder; alt13->miju19->alt21->hils17->miju20 = cumulative90; independent A; close cancel+confirm with unused plans");
@@ -295,11 +311,18 @@ await seed(newDay());await clock(10,0);
   assert.equal(overlap,false,"large text nav clipped");
   checks.push("150percent text at360 has no horizontal overflow or clipped navigation");
   }
-  if (!process.env.STATS_ONLY) {
+  if (!process.env.STATS_ONLY && !process.env.UI_ONLY) {
     await runTimeChecks({ev,send,seed,fixture,read,click,input,tab,until,pause,shot,checks,date,clock});
     await runCorrectionParity({ev,seed,fixture,read,click,input,tab,until,pause,checks,date});
   }
-  await runStatisticsChecks({ev,send,seed,fixture,read,click,tab,until,pause,shot,checks,date});
+  if (!process.env.UI_ONLY) await runStatisticsChecks({ev,send,seed,fixture,read,click,tab,until,pause,shot,checks,date});
+  if (!process.env.KEYBOARD_ONLY && !process.env.BASIC_ONLY) {
+    await runNavigationChecks({ev,send,seed,fixture,read,click,input,tab,until,pause,shot,checks});
+    await runReportChecks({ev,send,seed,fixture,read,click,input,tab,until,pause,shot,checks});
+  }
+  if (process.env.NATIVE_LAYOUT === "1") await runKeyboardChecks({ev,send,seed,fixture,read,click,input,tab,pause,shot,checks});
+  if (!process.env.KEYBOARD_ONLY) await runBasicAudit({ev,send,seed,fixture,read,click,input,tab,until,pause,shot,checks});
+  if (!process.env.KEYBOARD_ONLY) await runInputSurfaces({ev,send,seed,fixture,read,click,tab,pause,shot,checks});
   assert.deepEqual(errors,[]);
   await writeFile(join(output,"result.json"),JSON.stringify({passed:true,checks,errors},null,2));
   console.log(JSON.stringify({passed:true,checks,artifacts:output},null,2));

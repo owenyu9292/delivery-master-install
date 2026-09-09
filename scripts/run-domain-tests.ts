@@ -23,7 +23,8 @@ import {
 } from "../src/domain/legacyMigration";
 import { migrateFieldAppBackup } from "../src/domain/fieldAppMigration";
 import type { DayRecord, TimelineEvent } from "../src/domain/types";
-import { buildDailyReport, buildPreviewModel } from "../src/domain/reportBuilder";
+import { buildDailyReport, buildDailyReportView, buildPreviewModel } from "../src/domain/reportBuilder";
+import { renderDailyReport } from "../src/app/reportView";
 import { createDateSummary } from "../src/storage/dayStore";
 import {
   FIELD_APP_BACKUP_APP,
@@ -700,6 +701,54 @@ test("in-progress unpaid helper day is not closed until finish is confirmed", ()
   assert.equal(helperDay.helpers.length, 0);
   assert.equal(calculation.totals.totalCount, 0);
   assert.equal(calculation.totals.efficiencyPerHour, undefined);
+});
+
+test("structured report shares totals, times, helper lines and never changes source or copy output", () => {
+  const day = structuredClone(sampleDayRecord);
+  const before = JSON.stringify(day);
+  const calculation = calculateDay(day);
+  const text = buildDailyReport(day, calculation).text;
+  const view = buildDailyReportView(day, calculation);
+  assert.equal(view.total, "43개");
+  assert.equal(view.delivery, "1시간 45분");
+  assert.equal(view.zones[0].count, "41개");
+  for (const helper of view.helpers) assert(text.includes(helper));
+  renderDailyReport(day, calculation);
+  assert.equal(JSON.stringify(day), before);
+  assert.equal(buildDailyReport(day, calculation).text, text);
+});
+
+test("structured report retains Miju A/B, ignores unstarted plans and updates after quantity correction", () => {
+  const day = structuredClone(sampleDayRecord);
+  day.zones[0].kind = "miju";
+  day.zones[0].name = '<img src=x onerror="alert(1)">';
+  day.zones.push({ id: "unused", name: "아직 방문 안 함", order: 2, kind: "alt" });
+  const end = day.timeline.find(e => e.type === "zone_end")!;
+  end.payload = { total: 100, delivered: 100, failed: 0, extra: 0, aTotal: 40, restTotal: 60 };
+  const first = buildDailyReportView(day, calculateDay(day));
+  assert.equal(first.zones.length, 1);
+  assert.equal(first.zones[0].rows.find(r => r.label.startsWith("A ·"))?.value, "40개");
+  assert.equal(first.zones[0].rows.find(r => r.label.startsWith("B ·"))?.value, "60개");
+  const html = renderDailyReport(day, calculateDay(day));
+  assert(html.includes("&lt;img")); assert(!html.includes("<img"));
+  end.payload = { total: 120, delivered: 120, failed: 0, extra: 0, aTotal: 40, restTotal: 80 };
+  const second = buildDailyReportView(day, calculateDay(day));
+  assert.equal(second.zones[0].count, "120개");
+  assert.equal(second.zones[0].rows.find(r => r.label.startsWith("B ·"))?.value, "80개");
+});
+
+test("structured report empty day and invalid time do not invent efficiency", () => {
+  const day = structuredClone(sampleDayRecord);
+  day.timeline = []; day.zones = []; day.helpers = []; day.status = "draft";
+  const empty = buildDailyReportView(day, calculateDay(day));
+  assert.equal(empty.total, "0개"); assert.equal(empty.zones.length, 0);
+  assert.equal(empty.efficiency, "미확정");
+  assert.equal(empty.summary.find(r => r.label === "예상 수량")?.value, "미입력");
+  const bad = structuredClone(sampleDayRecord);
+  bad.timeline.find(e => e.type === "zone_end")!.at = "2026-05-17T07:00:00+09:00";
+  const broken = buildDailyReportView(bad, calculateDay(bad));
+  assert.equal(broken.zones[0].rows.find(r => r.label === "실제 효율")?.value, "미확정");
+  assert(!/NaN|Infinity/.test(JSON.stringify(broken)));
 });
 
 test("buildDailyReport derives report text without storing report data on DayRecord", () => {

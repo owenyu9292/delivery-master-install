@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "checks": [
+    "native-sized keyboard geometry 16 checks: quantity/hour/minute/name, 3 IME heights plus close, stale visual gap never counted twice, input accessible and records unchanged",
+    "raw negative/decimal/exponent/text log quantities retained and rejected; corrected input saves without record loss",
+    "invalid signed/text/range time tokens cannot silently change time; immediate valid retry succeeds",
+    "unsaved quantity survives six tab round trips and reload with saved day unchanged",
+    "unsaved log-time edit survives tabs and reopening after reload; no implicit data write",
+    "keyboard Next focus moves to minute and remains tappable above navigation at 411x320",
+    "12 rotate/resize/resume event cycles retain quantity draft, no horizontal overflow or stored writes",
+    "no success before delayed disk commit; injected failure preserves original+edit; valid retry saves101",
+    "failed building-checkpoint clear preserves saved checkpoint and all three visible quantities",
+    "successful checkpoint clear empties only buildings; cumulative90 draft survives clear and reload",
+    "168 visible input bounds/hit checks: before work, active hils/miju, every core log event, backup/statistics at 3 viewport sizes; stored records unchanged"
+  ],
+  "errors": []
+}

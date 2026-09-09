@@ -2,7 +2,7 @@
 
 # delivery-master-install
 
-최신 인스톨판 작업: v36. 변경과 설치 안내는 [RELEASE_v36.md](RELEASE_v36.md), 실제 검수/배포 증거는 [VERIFICATION_v36.md](VERIFICATION_v36.md).
+v39 최종 수정본의 폰 USB 설치와 기존 자료 보존을 확인했습니다. GitHub APK 공개 작업 중이며 [VERIFICATION_v39.md](VERIFICATION_v39.md)에 결과를 기록합니다. 상세 검수 범위는 [버튼 간격 검수](VERIFICATION_spacing_2026-09-09.md)와 [기본 검수](VERIFICATION_basics_2026-09-09.md)를 확인합니다. PWA 원본은 변경하지 않습니다.
 
 ## Current Folder Role
 

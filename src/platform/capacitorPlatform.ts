@@ -1,4 +1,5 @@
 import { App } from "@capacitor/app";
+import { createBackDispatcher, type BackHandler } from "./backNavigation";
 import { Clipboard } from "@capacitor/clipboard";
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { DocumentFile, type DocumentFilePluginContract } from "./nativeDocumentPlugin";
@@ -9,10 +10,11 @@ const SNAPSHOT_RETENTION_COUNT = 5;
 
 export class CapacitorPlatformServices implements PlatformServices {
   constructor(private readonly documentFile: DocumentFilePluginContract = DocumentFile) {}
-  async initialize(): Promise<void> {
-    await App.addListener("backButton", () => {
-      void App.exitApp();
-    });
+  private backListener?: Awaited<ReturnType<typeof App.addListener>>;
+  async initialize(onBack: BackHandler = () => false): Promise<void> {
+    await this.backListener?.remove();
+    const handle = createBackDispatcher(onBack, () => App.exitApp(), error => console.error("Back navigation failed", error));
+    this.backListener = await App.addListener("backButton", () => { void handle(); });
   }
 
   async copyText(text: string): Promise<void> {

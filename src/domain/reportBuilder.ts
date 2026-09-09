@@ -91,6 +91,60 @@ export function buildDailyReport(
   };
 }
 
+// Display data shares the report's calculation and formatting, never stored on DayRecord.
+export function buildDailyReportView(day: DayRecord, calculation: DayCalculation) {
+  const zones = getReportZones(day, calculation);
+  const depart = firstEvent(day, "depart_jinjeop");
+  const arrive = firstEvent(day, "arrive_cheongnyangni");
+  const close = lastEvent(day, "day_close");
+  const expected = getExpectedTotal(day);
+  const totals = calculation.totals;
+  const row = (label: string, value: string) => ({ label, value });
+  const rate = (value: number | undefined) => value === undefined ? "미확정" : `${formatWholeEfficiency(value)}/시간`;
+  return {
+    date: formatKoreanDate(day.date),
+    status: { draft: "업무 전", active: "진행 중", closed: "업무 완료", reviewNeeded: "확인 필요" }[day.status],
+    total: `${totals.totalCount}개`,
+    delivery: formatMinutes(totals.deliveryMinutes),
+    efficiency: rate(totals.efficiencyPerHour),
+    summary: [
+      row("예상 수량", expectedText(expected, expected === undefined ? undefined : totals.totalCount - expected)),
+      row("전체 업무", formatMinutes(totals.totalElapsedMinutes)),
+      row("순수 운전", formatMinutes(diffMinutes(depart?.at, arrive?.at))),
+      row("완료 / 실패 / 추가", `${totals.deliveredCount} / ${totals.failedCount} / ${totals.extraCount}개`),
+      row("정규 효율 · 대체배송 제외", rate(calculateRegularEfficiency(day, calculation))),
+    ],
+    flow: [row("진접 출발", formatClock(depart?.at)), row("청량리 도착", formatClock(arrive?.at)), row("업무 종료", formatClock(close?.at))],
+    zones: zones.map((zone, index) => {
+      const start = firstZoneEvent(day, zone.zoneId, "zone_start");
+      const end = firstZoneEvent(day, zone.zoneId, "zone_end");
+      const sortingStart = firstZoneEvent(day, zone.zoneId, "sorting_start");
+      const sortingEnd = firstZoneEvent(day, zone.zoneId, "sorting_end");
+      const payload = end?.payload as Record<string, unknown> | undefined;
+      const rows = [row("실제 배송 소요", formatMinutes(zone.deliveryMinutes))];
+      if (getZoneKind(day.zones.find(z => z.id === zone.zoneId)) === "miju") {
+        const a = numberOr(payload?.aTotal, sumNumbers(payload?.building1Total, payload?.building2Total, payload?.building3Total));
+        const b = numberOr(payload?.restTotal, numberOr(payload?.bTotal, Math.max(0, zone.counts.delivered - a)));
+        rows.push(row("A · 1, 2, 3동", `${a}개`), row("B · 나머지 동", `${b}개`));
+      }
+      if (sortingStart || sortingEnd) rows.push(row("정리", `${formatClock(sortingStart?.at)} ~ ${formatClock(sortingEnd?.at)} · ${formatMinutes(zone.sortingMinutes)}`));
+      rows.push(row("실제 효율", rate(zone.efficiencyPerHour)));
+      rows.push(row("전체 효율", rate(calculateEfficiency(zone.counts.delivered, zone.elapsedMinutes))));
+      if (zone.eventMinutes && zone.eventMinutes > 0) rows.push(row("이벤트", formatMinutes(zone.eventMinutes)));
+      return { id: zone.zoneId, order: index + 1, name: getZoneName(day, zone.zoneId), count: `${zone.counts.delivered}개`,
+        period: `${formatClock(start?.at)} ~ ${formatClock(end?.at)}`, rows };
+    }),
+    helpers: buildHelperSummaryLines(calculation).slice(1).map(line => line.trim()),
+    incidents: day.timeline.filter(event => event.type === "incident").map(event => {
+      const payload = event.payload as { title?: unknown; minutes?: unknown } | undefined;
+      return { title: typeof payload?.title === "string" ? payload.title : "이벤트",
+        detail: `${formatClock(event.at)} · ${event.zoneId ? getZoneName(day, event.zoneId) : "전체"}`,
+        duration: typeof payload?.minutes === "number" ? formatMinutes(payload.minutes) : "시간 미입력" };
+    }),
+    warnings: getReportWarnings(day, calculation, zones).map(warning => warning.message),
+  };
+}
+
 function getReportZones(dayRecord: DayRecord, calculation: DayCalculation): ZoneCalculation[] {
   const startedZoneIds = new Set(
     dayRecord.timeline

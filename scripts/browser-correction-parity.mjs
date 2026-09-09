@@ -51,7 +51,7 @@ export async function runCorrectionParity({ev,seed,fixture,read,click,input,tab,
   await click('[data-action="restore-helper-zone"][data-helper="legacy-helper"]');
   const restoredLegacy=await read();
   assert.equal(restoredLegacy.timeline.find(e=>e.type==="zone_start").at,restoredLegacy.timeline.find(e=>e.type==="zone_end").at);
-  await tab("report");assert.match(await ev('document.querySelector(".report").innerText'),/실제 효율: 시간당 -/);
+  await tab("report");assert.match(await ev('document.querySelector(".report").innerText'),/실제 효율\s+미확정/);
   assert.equal(restoredLegacy.timeline.find(e=>e.type==="zone_end").payload.delivered,100);
   checks.push("legacy helper without original time restores count100 but no invented5min efficiency; log time correction remains required");
 

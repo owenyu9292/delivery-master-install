@@ -1,7 +1,7 @@
-import { createElement, Truck, List, FileText, ChartColumn, FolderArchive, RefreshCw, Plus, Pencil, ArrowUp, ArrowDown, ChevronRight, X, Check, Route } from "lucide";
+import { createElement, Truck, List, FileText, ChartColumn, FolderArchive, RefreshCw, Plus, Pencil, ArrowUp, ArrowDown, ChevronRight, X, Check, Route, Copy } from "lucide";
 import type { ZoneKind } from "../domain/zoneIdentity";
 
-const icons = { work: Truck, log: List, report: FileText, stats: ChartColumn, backup: FolderArchive, refresh: RefreshCw, plus: Plus, edit: Pencil, up: ArrowUp, down: ArrowDown, next: ChevronRight, close: X, check: Check, route: Route };
+const icons = { work: Truck, log: List, report: FileText, stats: ChartColumn, backup: FolderArchive, refresh: RefreshCw, plus: Plus, edit: Pencil, up: ArrowUp, down: ArrowDown, next: ChevronRight, close: X, check: Check, route: Route, copy: Copy };
 export function fieldIcon(name: keyof typeof icons): string {
   return createElement(icons[name], { width: 20, height: 20, "aria-hidden": "true", "stroke-width": 1.8 }).outerHTML;
 }

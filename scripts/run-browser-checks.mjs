@@ -22,4 +22,13 @@ for (const script of scripts) {
   }
 }
 
-console.log("browser checks passed: " + scripts.join(", "));
+if (process.env.LEGACY_BROWSER_CHECKS !== "1") {
+  const keyboard = spawnSync(process.execPath, [resolve("scripts", "browser-field-workflow.mjs")], {
+    stdio: "inherit",
+    env: { ...process.env, UI_ONLY: "1", NATIVE_LAYOUT: "1", KEYBOARD_ONLY: "1" },
+    windowsHide: true,
+  });
+  if (keyboard.error) { console.error(keyboard.error); process.exit(1); }
+  if (keyboard.status !== 0) process.exit(keyboard.status ?? 1);
+}
+console.log("browser checks passed: " + scripts.join(", ") + "; native keyboard geometry");

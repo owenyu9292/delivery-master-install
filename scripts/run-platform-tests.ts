@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import capacitorConfig from "../capacitor.config";
 import { BrowserPlatformServices } from "../src/platform/browserPlatform";
 import { CapacitorPlatformServices } from "../src/platform/capacitorPlatform";
 import type { DocumentFilePluginContract } from "../src/platform/nativeDocumentPlugin";
 
 type MockFile = { name: string; text(): Promise<string> };
+assert.equal(capacitorConfig.plugins?.SystemBars?.insetsHandling, "disable", "MainActivity owns IME insets; a second native inset handler must stay disabled");
 
 const originalGlobals = {
   navigator: globalThis.navigator,

@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "checks": [
+    "native-sized keyboard geometry 16 checks: quantity/hour/minute/name, 3 IME heights plus close, stale visual gap never counted twice, input accessible and records unchanged"
+  ],
+  "errors": []
+}

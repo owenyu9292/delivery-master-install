@@ -60,12 +60,12 @@ export async function runSafetyChecks({ ev, send, seed, fixture, read, click, in
   await logTime("end", "07", "00");
   await click('[data-action="save-log-edit"][data-event="end"]');
   await tab("report");
-  assert.match(await ev('document.querySelector(".report").innerText'), /실제 효율: 시간당 -/);
+  assert.match(await ev('document.querySelector(".report").innerText'), /실제 효율\s+미확정/);
   await tab("log"); await click('[data-action="open-log-edit"][data-event="end"]');
   await logTime("end", "11", "00");
   await click('[data-action="save-log-edit"][data-event="end"]');
   await tab("report");
-  assert.match(await ev('document.querySelector(".report").innerText'), /실제 효율: 시간당 72개/);
+  assert.match(await ev('document.querySelector(".report").innerText'), /실제 효율\s+72개\/시간/);
   checks.push("log save failure keeps editor+120; reload retry saves; end before departure shows unknown; correction restores72perHour");
 
   const missed = fixture(true);
@@ -81,7 +81,7 @@ export async function runSafetyChecks({ ev, send, seed, fixture, read, click, in
   const recovered = await read();
   assert.equal(new Date(recovered.timeline.find(e => e.id === "delivery").at).toISOString(), new Date(date + "T09:30:00+09:00").toISOString());
   await tab("report");
-  assert.match(await ev('document.querySelector(".report").innerText'), /실제 배송 소요: 1시간 30분/);
+  assert.match(await ev('document.querySelector(".report").innerText'), /실제 배송 소요\s+1시간 30분/);
   checks.push("forgot sorting finish: log adds09:30 and reanchors generated delivery start; 90min recovered");
 
   await fresh(fixture(true));

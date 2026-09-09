@@ -166,6 +166,26 @@ assert.equal(belowKnownAPayload.bTotal, 0);
 assert.ok(belowKnownACalculation.warnings.some((warning) => warning.code === "miju_detail_inconsistent"));
 
 const nonMiju = baseDay("힐스", "hils");
+for (const details of [
+  { aTotal: 40, restTotal: 60 },
+  { aTotal: 40, mijuRest: 60 },
+  { aTotal: 40, bTotal: 60 },
+  { aTotal: 40 },
+  { building1Total: 10, building2Total: 20, building3Total: 10, restTotal: 60 },
+]) {
+  let day = baseDay();
+  const end = day.timeline.find(event => event.id === "end")!;
+  end.payload = { total: 100, delivered: 100, failed: 0, extra: 0, ...details };
+  for (const total of [120, 90, 100, 120]) {
+    day = applyCompletedZoneEdit(day, { zoneId: "zone-a", delivered: total });
+    const payload = day.timeline.find(event => event.id === "end")!.payload as Record<string, unknown>;
+    assert.equal(payload.aTotal, 40);
+    assert.equal(payload.bTotal, total - 40);
+    if ("restTotal" in details) assert.equal(payload.restTotal, total - 40);
+    if ("mijuRest" in details) assert.equal(payload.mijuRest, total - 40);
+    day = JSON.parse(JSON.stringify(day));
+  }
+}
 const nonMijuEdited = applyCompletedZoneEdit(nonMiju, { zoneId: "hils", delivered: 120 });
 const nonMijuPayload = nonMijuEdited.timeline.find((event) => event.id === "end")?.payload as Record<string, unknown>;
 assert.equal(Object.hasOwn(nonMijuPayload, "aTotal"), false);

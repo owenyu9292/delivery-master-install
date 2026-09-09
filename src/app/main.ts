@@ -15,7 +15,7 @@ import { buildDailyReport } from "../domain/reportBuilder";
 import { resolveMijuDetailQuantity, validateZoneQuantity } from "../domain/zoneValidation";
 import { resolveMissingDeliveryStart } from "../domain/deliveryStartRecovery";
 import { validateTimeAxis } from "../domain/timeAxisValidation";
-import type { DayCalculation, DayRecord, HelperRecord, ReportResult, TimelineEvent, TimelineEventType, ZoneRecord } from "../domain/types";
+import type { DayCalculation, DayRecord, HelperRecord, TimelineEvent, TimelineEventType, ZoneRecord } from "../domain/types";
 import { buildPhoneInstallDashboard, preparePhoneInstallUpdate } from "../install/phoneInstall";
 import {
   PHONE_INSTALL_BACKUP_FILENAME,
@@ -28,6 +28,9 @@ import type { ZoneQuantityComparison } from "../ui/uiScreens";
 import { APP_VERSION, SETTINGS_VERSION_LABEL, TOPBAR_VERSION_LABEL } from "./version";
 import { createAppRuntime } from "./appRuntime";
 import { FormDrafts } from "./formDrafts";
+import { parseUnsignedInput } from "./numericInput";
+import { createViewportLayout } from "./viewportLayout";
+import { renderDailyReport } from "./reportView";
 import { fieldIcon, renderRouteSheet, type RouteSheetState } from "./fieldView";
 import { getZoneKind, type ZoneKind } from "../domain/zoneIdentity";
 
@@ -116,6 +119,7 @@ type LogEditKind =
 const appRoot = document.querySelector<HTMLDivElement>("#app");
 if (!appRoot) throw new Error("Missing #app root");
 const root: HTMLDivElement = appRoot;
+const viewportLayout = createViewportLayout(root, { nativeInsets: Capacitor.isNativePlatform() });
 
 let appReady = false;
 void boot();
@@ -135,7 +139,7 @@ if (Capacitor.isNativePlatform()) {
 
 async function boot(): Promise<void> {
   try {
-    await platform.initialize();
+    await platform.initialize(handleAppBack);
     await loadToday();
     try { await persistAutomaticCleanup(); } catch (error) { showBackgroundError(error); }
     render();
@@ -195,7 +199,6 @@ function render(): void {
   discardDraftOnRender = false;
 
   const calculation = calculateDay(currentDay);
-  const report = buildDailyReport(currentDay, calculation, { title: "Delivery Master Install Report" });
   const pendingZone = currentDay.zones.find((zone) => hasMissingCleanupFinish(currentDay!, zone.id));
   const history = historyDays.length > 0 ? historyDays : [currentDay];
 
@@ -218,7 +221,7 @@ function render(): void {
       ${historyReadErrors.length ? `<aside class="warning" role="alert">${escapeHtml(historyReadErrors.join(", "))} 기록을 읽지 못했습니다. 해당 자료는 삭제하지 않았습니다.</aside>` : ""}
       ${rolloverChoice ? `<aside class="warning"><strong>${escapeHtml(currentDay.date)} 기록이 열려 있습니다.</strong><div class="field-actions"><button data-action="continue-previous-day">이전 업무 계속</button><button data-action="start-today">오늘 업무 열기</button></div></aside>` : ""}
       ${calculation.warnings.filter((warning) => warning.code !== "missing_calculation_event").length ? `<aside class="warning" role="status">${calculation.warnings.filter((warning) => warning.code !== "missing_calculation_event").map((warning) => escapeHtml(warning.message)).join("<br>")}</aside>` : ""}
-      ${renderActiveTabContent(calculation, report, history, pendingZone)}
+      ${renderActiveTabContent(calculation, currentDay, history, pendingZone)}
     </main>
     ${routeSheet ? renderRouteSheet(routeSheet, getOrderedZones().filter(z => !hasZoneStarted(z.id)), !!routeSheet.zoneId && !hasZoneStarted(routeSheet.zoneId), !!getOrderedZones().find(z => hasZoneStarted(z.id) && !hasZoneEnded(z.id)), calculation.totals.deliveredCount) : ""}
   `;
@@ -239,6 +242,24 @@ function render(): void {
   updateQuantityPreview();
   root.querySelectorAll<HTMLInputElement>(".quantity-input input,.building-grid input").forEach(input => input.addEventListener("input", updateQuantityPreview));
   bindRouteSheet();
+  viewportLayout.update();
+}
+
+function handleAppBack(): boolean {
+  formDrafts.capture(root, renderedFormKey);
+  if (actionInProgress) return true;
+  const input = document.activeElement;
+  if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
+    input.blur();
+    return true;
+  }
+  if (routeSheet) { routeSheet = null; render(); return true; }
+  if (activeLogEditEventId) { activeLogEditEventId = ""; render(); return true; }
+  if (pendingQuantityRisk) { pendingQuantityRisk = null; render(); return true; }
+  const expanded = [...root.querySelectorAll<HTMLDetailsElement>("details[open]")].at(-1);
+  if (expanded) { expanded.open = false; return true; }
+  if (activeTab !== "work") { activeTab = "work"; render(); return true; }
+  return false;
 }
 
 async function runButtonAction(button: HTMLButtonElement): Promise<void> {
@@ -348,7 +369,7 @@ function renderTabs(): string {
 
 function renderActiveTabContent(
   calculation: DayCalculation,
-  report: ReportResult,
+  day: DayRecord,
   history: DayRecord[],
   pendingZone: ZoneRecord | undefined,
 ): string {
@@ -356,7 +377,7 @@ function renderActiveTabContent(
     case "log":
       return renderLogTab(calculation);
     case "report":
-      return renderReportTab(report);
+      return renderDailyReport(day, calculation, true);
     case "stats":
       return renderStatsTab(history);
     case "backup":
@@ -387,18 +408,6 @@ function renderLogTab(calculation: DayCalculation): string {
       <h2>로그</h2>
       <div class="timeline-log">
         ${buildLogEntries(calculation).map((entry) => renderLogEntry(entry)).join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderReportTab(report: ReportResult): string {
-  return `
-    <section class="panel">
-      <h2>리포트</h2>
-      <pre class="report">${escapeHtml(report.text)}</pre>
-      <div class="row-actions">
-        <button data-action="copy-report">리포트 복사</button>
       </div>
     </section>
   `;
@@ -465,16 +474,13 @@ function renderMonthlyStats(history: DayRecord[]): string {
 function renderDateStats(history: DayRecord[]): string {
   const selected = history.find((dayRecord) => dayRecord.date === statsSelectedDate);
   const calculation = selected ? calculateDay(selected) : undefined;
-  const report = selected && calculation
-    ? buildDailyReport(selected, calculation, { title: "Delivery Master Install Report" })
-    : undefined;
 
   return `
     <div class="date-search-row">
       <label>날짜 선택<input id="stats-date-input" type="date" value="${statsSelectedDate}"></label>
       <button class="secondary" data-action="stats-date-today">오늘</button>
     </div>
-    ${selected && calculation && report
+    ${selected && calculation
       ? `
         <div class="date-result">
           <h3>${formatKoreanDateLabel(selected.date)}</h3>
@@ -496,7 +502,7 @@ function renderDateStats(history: DayRecord[]): string {
             `).join("")}
           </div>
           <h3>리포트</h3>
-          <pre class="report">${escapeHtml(report.text)}</pre>
+          ${renderDailyReport(selected, calculation)}
         </div>
       `
       : renderMissingDateState(statsSelectedDate)}
@@ -864,7 +870,7 @@ function renderRecordCorrectionPanel(): string {
             `).join("")}
           </select>
         </label>
-        <button data-action="select-correction-target">기록 불러오기</button>
+        <div class="field-actions"><button data-action="select-correction-target">기록 불러오기</button></div>
         ${selectedTarget?.type === "zone" ? renderZoneCorrectionForm(selectedTarget.zone, selectedTarget.delivered) : ""}
         ${selectedTarget?.type === "helper" ? renderHelperCorrectionForm(selectedTarget.helper) : ""}
       `}
@@ -938,7 +944,7 @@ function renderZoneCorrectionForm(zone: ZoneRecord, delivered: number): string {
           <input id="correction-zone-extra" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="0">
         </label>
       </div>
-      <button data-action="save-zone-correction" data-zone="${escapeAttribute(zone.id)}">선택 기록 정정 반영</button>
+      <div class="field-actions"><button data-action="save-zone-correction" data-zone="${escapeAttribute(zone.id)}">선택 기록 정정 반영</button></div>
     </article>
   `;
 }
@@ -967,7 +973,7 @@ function renderMissingHelperCorrectionForm(): string {
       <label>메모
         <input id="correction-helper-note" type="text" value="기록 정정에서 추가">
       </label>
-      <button data-action="add-correction-helper">누락 도우미 기록 추가</button>
+      <div class="field-actions"><button data-action="add-correction-helper">누락 도우미 기록 추가</button></div>
     </article>
   `;
 }
@@ -1509,7 +1515,7 @@ function renderDepartStep(): string {
       <p class="step">1 / 출발</p>
       <h2>진접 출발</h2>
       <label>예상 수량<input id="expected-count" type="number" inputmode="numeric" min="0" max="${MAX_REASONABLE_EXPECTED}" placeholder="예: 285"></label>
-      <button data-action="depart">출발 기록</button>
+      <div class="field-actions"><button class="primary full-width" data-action="depart">출발 기록</button></div>
     </section>
   `;
 }
@@ -2162,11 +2168,13 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     if (!validateWorkDigits()) return;
     saveMijuCheckpoint(zoneId);
     await saveAndRender();
+    toast("1/2/3동 기록을 저장했습니다.");
     return;
   }
   if (action === "clear-miju-detail") {
     clearMijuCheckpoint(zoneId);
     await saveAndRender();
+    toast("A구간 저장값을 초기화했습니다.");
     return;
   }
   if (action === "set-work-order") {
@@ -2648,8 +2656,8 @@ async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
   normalizeZoneOrdersByActualStart();
   activeCorrectionTargetId = `zone:${zoneId}`;
   activeLogEditEventId = "";
-  toast(`${nextName} 기록을 다시 저장했습니다.`);
   await saveAndRender();
+  toast(`${nextName} 기록을 다시 저장했습니다.`);
 }
 
 async function saveLogEdit(eventId?: string): Promise<void> {
@@ -2732,8 +2740,8 @@ async function saveLogMissingSortingEndEdit(editKey: string): Promise<void> {
       : "정리 완료 누락 추가 · 로그 현장 정정",
   );
   activeLogEditEventId = "";
-  toast(axisIssue ? "정리 완료를 저장했습니다. 시간 순서는 정정 이력에서 확인하세요." : "정리 완료를 로그에 추가했습니다.");
   await saveAndRender();
+  toast(axisIssue ? "정리 완료를 저장했습니다. 시간 순서는 정정 이력에서 확인하세요." : "정리 완료를 로그에 추가했습니다.");
 }
 async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
   if (!currentDay) return;
@@ -2768,8 +2776,8 @@ async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
       : `${event.type} 수정 · 로그 현장 정정`,
   );
   activeLogEditEventId = "";
-  toast("로그 원본 기록을 저장했습니다.");
   await saveAndRender();
+  toast("로그 원본 기록을 저장했습니다.");
 }
 
 function readHandlingInput(selector: string): number {
@@ -2837,8 +2845,8 @@ async function saveLogIncidentEdit(event: TimelineEvent): Promise<void> {
   currentDay = updateEvent(currentDay, event.id, { at, zoneId, payload, note: readText(`#${baseId}-note`, "") || undefined });
   currentDay = withLogInlineAdjustment(currentDay, event.id, "log_inline_incident_edit", `${title} 이벤트 수정`);
   activeLogEditEventId = "";
-  toast("이벤트 원본 기록을 저장했습니다.");
   await saveAndRender();
+  toast("이벤트 원본 기록을 저장했습니다.");
 }
 
 async function saveLogZoneEventEdit(event: TimelineEvent): Promise<void> {
@@ -2895,8 +2903,8 @@ async function saveLogZoneEventEdit(event: TimelineEvent): Promise<void> {
       : `${event.type} 수정 · 로그 현장 정정`,
   );
   activeLogEditEventId = "";
-  toast(axisIssue ? "로그 정정을 저장했습니다. 시간 순서는 정정 이력에서 확인하세요." : "로그 원본 기록을 저장했습니다.");
   await saveAndRender();
+  toast(axisIssue ? "로그 정정을 저장했습니다. 시간 순서는 정정 이력에서 확인하세요." : "로그 원본 기록을 저장했습니다.");
 }
 
 function withLogInlineAdjustment(dayRecord: DayRecord, eventId: string, reason: string, note: string): DayRecord {
@@ -3061,8 +3069,8 @@ async function saveHelperCorrection(helperId?: string): Promise<void> {
       recoveryStatus: currentDay.meta.recoveryStatus === "none" ? "needsReview" : currentDay.meta.recoveryStatus,
     },
   };
-  toast(`${label}${quantity > 0 ? ` ${quantity}개` : " 수량 미기록"}로 다시 저장했습니다.`);
   await saveAndRender();
+  toast(`${label}${quantity > 0 ? ` ${quantity}개` : " 수량 미기록"}로 다시 저장했습니다.`);
 }
 
 async function addCorrectionHelper(): Promise<void> {
@@ -3238,13 +3246,10 @@ function saveMijuCheckpoint(zoneId = getCurrentWorkZone()?.id ?? "miju"): void {
       total: aTotal + parts.rest,
     },
   });
-  toast(`A구간 저장: ${aTotal}개`);
 }
 
 function clearMijuCheckpoint(zoneId = getCurrentWorkZone()?.id ?? "miju"): void {
   if (!currentDay) return;
-  formDrafts.clearFields(renderedFormKey, ["#miju-1-count", "#miju-2-count", "#miju-3-count"]);
-  root.querySelectorAll<HTMLInputElement>(".building-grid input").forEach(input => { input.value = ""; });
   currentDay = createEvent(currentDay, {
     type: "manual_adjust",
     at: nowIso(),
@@ -3253,7 +3258,6 @@ function clearMijuCheckpoint(zoneId = getCurrentWorkZone()?.id ?? "miju"): void 
       reason: "miju_a_checkpoint_clear",
     },
   });
-  toast("A구간 저장값을 초기화했습니다.");
 }
 
 function addZoneEvent(type: "sorting_start" | "sorting_end", zoneId: string): void {
@@ -3457,8 +3461,8 @@ async function saveCompletedZoneEdit(zoneId: string): Promise<void> {
     reason: "completed_zone_edit_from_app",
   });
   ensureDeliveryStartBeforeZoneEnd(zoneId, endAt);
-  toast("완료 구역 수정이 저장됐습니다.");
   await saveAndRender();
+  toast("완료 구역 수정이 저장됐습니다.");
 }
 
 function validateZoneEditTimes(zoneId: string, input: {
@@ -3626,6 +3630,11 @@ async function saveAndRender(): Promise<void> {
   await store.saveDay(currentDay);
   await refreshHistory();
   if (["save-log-edit", "save-zone-edit", "apply-zone-correction"].includes(currentAction)) discardFormDraft();
+  if (currentAction === "clear-miju-detail") {
+    formDrafts.capture(root, renderedFormKey);
+    formDrafts.clearFields(renderedFormKey, ["#miju-1-count", "#miju-2-count", "#miju-3-count"]);
+    discardDraftOnRender = true;
+  }
   if (currentAction === "add-event") {
     formDrafts.capture(root, renderedFormKey);
     formDrafts.clearFields(renderedFormKey, ["#event-title", "#event-scope", "#event-at", "#event-minutes", "#event-note"]);
@@ -4253,9 +4262,9 @@ function readDigitTimeToken(selector: string): string {
 }
 
 function normalizeDigitToken(input?: HTMLInputElement | null): string {
-  const cleaned = (input?.value ?? "").replace(/\D/g, "").slice(0, 2);
-  if (input && input.value !== cleaned) input.value = cleaned;
-  return cleaned;
+  const raw = input?.value ?? "";
+  parseUnsignedInput(raw, 2);
+  return raw;
 }
 
 function buildDigitTimeIso(hourToken: string, minuteToken: string, label: string, existingIso?: string): string | undefined {
@@ -4567,38 +4576,27 @@ function readDeliveredPayload(event?: TimelineEvent): number {
 
 function readNumber(selector: string, fallback = 0): number {
   const raw = document.querySelector<HTMLInputElement>(selector)?.value ?? "";
-  const value = parseInt(raw.replace(/\D/g, ""), 10);
-  return Number.isFinite(value) ? value : fallback;
+  const parsed = parseUnsignedInput(raw, 6);
+  return parsed.hasValue ? parsed.value : fallback;
 }
 
 function readLimitedNumber(selector: string, maxDigits: number, fallback = 0): number {
-  const input = document.querySelector<HTMLInputElement>(selector);
-  const cleaned = (input?.value ?? "").replace(/\D/g, "").slice(0, maxDigits);
-  if (input && input.value !== cleaned) input.value = cleaned;
-  const value = parseInt(cleaned, 10);
-  return Number.isFinite(value) ? value : fallback;
+  const parsed = readLimitedNumberField(selector, maxDigits);
+  return parsed.hasValue ? parsed.value : fallback;
 }
 
 function readLimitedNumberField(selector: string, maxDigits: number): { value: number; hasValue: boolean } {
   const input = document.querySelector<HTMLInputElement>(selector);
-  const cleaned = (input?.value ?? "").replace(/\D/g, "").slice(0, maxDigits);
-  if (input && input.value !== cleaned) input.value = cleaned;
-  const value = parseInt(cleaned, 10);
-  return {
-    value: Number.isFinite(value) ? value : 0,
-    hasValue: cleaned.length > 0,
-  };
+  return parseUnsignedInput(input?.value ?? "", maxDigits);
 }
 
 function bindNumericLimits(): void {
   root.querySelectorAll<HTMLInputElement>("[data-numeric-limit]").forEach((input) => {
+    // Keep an overlong paste visible for correction instead of silently truncating it.
+    input.removeAttribute("maxlength");
     input.addEventListener("input", () => {
       const maxDigits = parseInt(input.dataset.numericLimit ?? "3", 10);
-      if (input.closest(".quantity-input,.building-grid")) {
-        input.setCustomValidity(input.value === "" || new RegExp("^\\d{1," + maxDigits + "}$").test(input.value) ? "" : "0 이상의 정수로 입력하세요.");
-        return;
-      }
-      input.value = input.value.replace(/\D/g, "").slice(0, maxDigits);
+      input.setCustomValidity(input.value === "" || new RegExp("^\\d{1," + maxDigits + "}$").test(input.value) ? "" : "0 이상의 정수로 입력하세요.");
     });
   });
 }
@@ -4642,10 +4640,7 @@ function readHelperCorrectionKind(helperId: string): "free_received" | "paid_rec
 function readHelperCorrectionQuantity(helperId: string): number {
   const input = Array.from(document.querySelectorAll<HTMLInputElement>("input[data-helper-quantity]"))
     .find((candidate) => candidate.dataset.helperQuantity === helperId);
-  const cleaned = (input?.value ?? "").replace(/\D/g, "").slice(0, 3);
-  if (input && input.value !== cleaned) input.value = cleaned;
-  const value = parseInt(cleaned, 10);
-  return Number.isFinite(value) ? value : 0;
+  return parseUnsignedInput(input?.value ?? "", 3).value;
 }
 
 function readHelperCorrectionAt(helperId: string): string | undefined {
@@ -4738,10 +4733,10 @@ function bindRouteSheet(): void {
   const dialog = root.querySelector<HTMLDialogElement>(".route-sheet");
   if (!dialog || !routeSheet) return;
   dialog.showModal();
-  dialog.addEventListener("cancel", event => { event.preventDefault(); routeSheet = null; render(); });
+  dialog.addEventListener("cancel", event => { event.preventDefault(); if (!actionInProgress) { routeSheet = null; render(); } });
   dialog.addEventListener("click", event => {
     const r = dialog.getBoundingClientRect();
-    if (event.target === dialog && (event.clientY < r.top || event.clientX < r.left || event.clientX > r.right)) { routeSheet = null; render(); }
+    if (!actionInProgress && event.target === dialog && (event.clientY < r.top || event.clientX < r.left || event.clientX > r.right)) { routeSheet = null; render(); }
   });
   const rememberName = () => { if (routeSheet) routeSheet.name = root.querySelector<HTMLInputElement>("#route-name")?.value ?? routeSheet.name; };
   root.querySelectorAll<HTMLInputElement>('[name="route-mode"]').forEach(input => input.addEventListener("change", () => {
