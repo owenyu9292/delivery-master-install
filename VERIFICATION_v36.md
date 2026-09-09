@@ -7,7 +7,7 @@
 - 화면 v36 / APP_VERSION 0.2.35-android-install / Android versionCode9, versionName0.2.35
 - package: io.github.owenyu9292.deliverymaster
 - PWA main 보존 기준: 1119e923ad6b8bf53e389b890ff9ba2024132d40
-- 상태: 로컬 검수 및 APK 빌드 완료. GitHub 공개 결과는 아래 배포 확인 절에 기록한다.
+- 상태: 로컬 검수, APK 빌드, 커밋/푸시, GitHub 공개 및 비로그인 다운로드 검증 완료.
 
 ## 자동 검수
 
@@ -54,4 +54,10 @@
 
 ## 배포 확인
 
-공개 전. 승인된 커밋/푸시/GitHub APK 배포 후 실제 공개 다운로드 해시를 기록한다.
+- 소스/APK 커밋 및 v36 태그: e59c2d278708cc4935be93a9a41674f80bf8022b
+- Release ID: 385188246. 공개 시각: 2026-09-09T02:37:31Z.
+- 페이지: https://github.com/owenyu9292/delivery-master-install/releases/tag/v36
+- 실제 비로그인 페이지 HTTP200 / APK 다운로드 HTTP200.
+- 내려받은 APK: 25,411,390바이트. SHA-256 1C2F492E984C3A56D50B4FEE13446A266C1B393CE8ADA4ED2787B890C16AF7D3 일치.
+- 원격 main: 1119e923ad6b8bf53e389b890ff9ba2024132d40 그대로. PWA 배포 없음.
+- 실제 폰 설치는 하지 않았다. 앱 삭제 없이 기존 설치본 위에 업데이트한다.
