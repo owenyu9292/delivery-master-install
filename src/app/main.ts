@@ -1,6 +1,12 @@
 import { applyMissingCleanupCorrection, hasMissingCleanupFinish } from "../domain/cleanupCorrection";
 import { DEFAULT_HANDLING_MINUTES, HANDLING_TITLE, findHandlingEvent, isHandlingEvent, readHandlingMinutes, setHandlingMinutes } from "../domain/handlingTime";
 import { applyCompletedZoneEdit } from "../domain/zoneEdit";
+import { applyLinkedEventTime } from "../domain/timeLinks";
+import { applyAutomaticCleanup } from "../domain/autoCleanup";
+import { captureHelperZone, restoreConvertedHelperZone, type HelperZoneSnapshot } from "../domain/helperZoneSnapshot";
+import { assertDayRecord } from "../storage/recordValidation";
+import { Capacitor } from "@capacitor/core";
+import { App as NativeApp } from "@capacitor/app";
 import { createEvent, updateEvent } from "../domain/eventTimeline";
 import { calculateDay } from "../domain/deliveryCalc";
 import { buildDailyReport } from "../domain/reportBuilder";
@@ -109,20 +115,29 @@ const appRoot = document.querySelector<HTMLDivElement>("#app");
 if (!appRoot) throw new Error("Missing #app root");
 const root: HTMLDivElement = appRoot;
 
+let appReady = false;
 void boot();
 root.addEventListener("input", () => formDrafts.capture(root, renderedFormKey));
 root.addEventListener("change", () => formDrafts.capture(root, renderedFormKey));
 window.addEventListener("pagehide", () => formDrafts.capture(root, renderedFormKey));
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") void checkDateBoundary().catch(showBackgroundError);
+  if (document.visibilityState === "visible") void checkBackgroundWork();
 });
-window.addEventListener("focus", () => void checkDateBoundary().catch(showBackgroundError));
+window.addEventListener("focus", () => void checkBackgroundWork());
+window.setInterval(() => { if (document.visibilityState === "visible") void checkBackgroundWork(); }, 15000);
+if (Capacitor.isNativePlatform()) {
+  void NativeApp.addListener("appStateChange", state => {
+    if (state.isActive) void checkBackgroundWork();
+  }).catch(showBackgroundError);
+}
 
 async function boot(): Promise<void> {
   try {
     await platform.initialize();
     await loadToday();
+    try { await persistAutomaticCleanup(); } catch (error) { showBackgroundError(error); }
     render();
+    appReady = true;
   } catch (error) {
     renderLoadRecovery(error);
   }
@@ -241,6 +256,10 @@ async function runButtonAction(button: HTMLButtonElement): Promise<void> {
   actionError = "";
   buttons.forEach((element) => { element.disabled = true; });
   try {
+    if (["sorting-end", "zone-end"].includes(currentAction) && await persistAutomaticCleanup()) {
+      render();
+      return;
+    }
     await handleAction(button);
   } catch (error) {
     console.error("Action failed", error);
@@ -267,6 +286,29 @@ function discardFormDraft(): void {
 function showBackgroundError(error: unknown): void {
   actionError = error instanceof Error ? error.message : "기록을 다시 확인하지 못했습니다. 기존 자료는 보존됩니다.";
   if (currentDay) render();
+}
+
+async function persistAutomaticCleanup(): Promise<boolean> {
+  if (!currentDay || historicalEditing || rolloverChoice || activeLogEditEventId) return false;
+  const result = applyAutomaticCleanup(currentDay, nowIso());
+  if (result.correctedZoneIds.length === 0) return false;
+  formDrafts.capture(root, renderedFormKey);
+  await store.saveDay(result.dayRecord);
+  currentDay = result.dayRecord;
+  actionError = "";
+  await refreshHistory();
+  return true;
+}
+
+async function checkBackgroundWork(): Promise<void> {
+  if (!appReady || actionInProgress || activeLogEditEventId || routeSheet) return;
+  try {
+    await checkDateBoundary();
+    if (actionInProgress || rolloverChoice) return;
+    actionInProgress = true;
+    try { if (await persistAutomaticCleanup()) render(); }
+    finally { actionInProgress = false; }
+  } catch (error) { showBackgroundError(error); }
 }
 
 async function checkDateBoundary(): Promise<boolean> {
@@ -1053,7 +1095,7 @@ function buildLogEntriesForDay(dayRecord: DayRecord, calculation: DayCalculation
         }
       }
     } else if (event.type === "sorting_end") {
-      entries.push({ ...baseEntry, title: "정리 완료", detail: `정리: ${formatMin(zoneCalc?.sortingMinutes)}`, kind: "sorting" });
+      entries.push({ ...baseEntry, title: "정리 완료", detail: `정리: ${formatMin(zoneCalc?.sortingMinutes)}${payload?.autoCleanup === true ? " · 자동 적용" : ""}`, kind: "sorting" });
     } else if (event.type === "zone_end") {
       const delivered = typeof payload?.delivered === "number" ? `${payload.delivered}개` : "수량 없음";
       const delivery = zoneCalc?.deliveryMinutes !== undefined ? ` · ${formatMin(zoneCalc.deliveryMinutes)}` : "";
@@ -1413,7 +1455,7 @@ function getHelperEventTitle(payload?: Record<string, unknown>): string {
 function getHelperEventDetail(payload?: Record<string, unknown>): string {
   const quantity = typeof payload?.quantity === "number" ? `${payload.quantity}개` : "";
   const kind = typeof payload?.helperKind === "string" ? payload.helperKind : "";
-  const sourceZone = typeof payload?.sourceZoneId === "string" && payload.sourceZoneId.length > 0;
+  const sourceZone = typeof payload?.sourceZoneId === "string" && currentDay?.zones.some(zone => zone.id === payload.sourceZoneId);
   const rule = sourceZone
     ? "구역 동행 · 총량 중복 제외"
     : kind === "free_received"
@@ -1542,7 +1584,7 @@ function renderMijuWorkStep(zone: ZoneRecord): string {
   const checkpoint = getMijuCheckpoint(zone.id);
   return `<section class="panel focus">
     ${renderRouteHeading(zone)}
-    <p class="work-status">배송 중 · ${formatTime(latestZoneEvent(zone.id, "zone_start")!.at)} 시작</p>
+    <p class="work-status">배송 중 · ${formatTime((latestZoneEvent(zone.id, "delivery_start") ?? latestZoneEvent(zone.id, "sorting_end") ?? latestZoneEvent(zone.id, "zone_start"))!.at)} 시작</p>
     <div class="building-block">
       <p class="section-label">1 · 2 · 3동</p>
       <div class="building-grid">
@@ -1595,13 +1637,16 @@ function renderGenericZoneWorkStep(zoneId: string, options: { step: string; titl
   const sortingStarted = hasZoneEvent(zoneId, "sorting_start");
   const sortingEnded = hasZoneEvent(zoneId, "sorting_end");
   const deliveryStarted = hasZoneEvent(zoneId, "delivery_start");
+  const sortingEndEvent = latestZoneEvent(zoneId, "sorting_end");
+  const automaticallySorted = (sortingEndEvent?.payload as Record<string, unknown> | undefined)?.autoCleanup === true;
   const ready = deliveryStarted || sortingEnded;
   return `<section class="panel focus">
     ${renderRouteHeading(zone)}
-    <p class="work-status">${sortingStarted && !sortingEnded ? "정리 중" : ready ? "배송 중" : "작업 시작 전"} · ${formatTime(latestZoneEvent(zoneId, "zone_start")!.at)} 시작</p>
+    <p class="work-status">${sortingStarted && !sortingEnded ? "정리 중" : ready ? "배송 중" : "작업 시작 전"} · ${formatTime((sortingStarted && !sortingEnded ? latestZoneEvent(zoneId, "sorting_start") : latestZoneEvent(zoneId, "delivery_start") ?? sortingEndEvent ?? latestZoneEvent(zoneId, "zone_start"))!.at)} 시작</p>
     ${sortingStarted && !sortingEnded ? `<button class="primary full-width" data-action="sorting-end" data-zone="${zoneId}">정리 완료</button>` : ""}
     ${!sortingStarted && !deliveryStarted ? `<div class="field-actions"><button class="primary full-width" data-action="delivery-start" data-zone="${zoneId}">바로 배송 시작</button><button class="secondary full-width" data-action="sorting-start" data-zone="${zoneId}">정리 시작</button></div>` : ""}
     ${ready ? `${renderWorkQuantity(zone)}<button class="primary full-width" data-action="zone-end" data-zone="${zoneId}">${escapeHtml(zone.name)} 완료</button>` : ""}
+    ${automaticallySorted ? `<div class="auto-cleanup-notice"><span>정리 30분 · 자동 적용</span><button class="symbol-button" data-action="open-log-edit" data-event="${sortingEndEvent!.id}" title="정리 시간 수정" aria-label="정리 시간 수정">${fieldIcon("edit")}</button></div>` : ""}
     ${hasHandlingControl(zoneId) ? renderHandlingControl(zoneId, options.countInputId) : ""}
     ${canCancelEmptyStartedExtraZone(zoneId) ? `<button class="text-button full-width" data-action="cancel-empty-extra-zone" data-zone="${zoneId}">잘못 추가함 · 취소</button>` : ""}
   </section>`;
@@ -1678,10 +1723,10 @@ function renderCleanupCorrectionPanel(zoneId: string): string {
   return `
     <section class="warning">
       <strong>정리 완료가 비어 있습니다.</strong>
-      <p>${getZoneName(zoneId)} 정리 시간을 입력하면 종료 시각 기준으로 보정합니다.</p>
+      <p>${getZoneName(zoneId)} 정리 시작: ${formatTime(latestZoneEvent(zoneId, "sorting_start")!.at)}</p>
       <div class="form-grid">
         <label>정리 시간<input id="cleanup-input" type="number" inputmode="numeric" min="1" value="30"></label>
-        <label>처리 방식<input value="종료시각 - 입력분" readonly></label>
+        <label>처리 방식<input value="정리 시작 + 입력분" readonly></label>
       </div>
       <div class="segmented">
         <button data-action="fix-cleanup" data-zone="${zoneId}">보정 적용</button>
@@ -2670,6 +2715,10 @@ async function saveLogMissingSortingEndEdit(editKey: string): Promise<void> {
     note: "로그에서 누락된 정리 완료를 현장 정정으로 추가",
   });
   linkLatestEvent(zoneId, "sorting_end", "sortingEndEventId");
+  if (!hasZoneEvent(zoneId, "delivery_start")) {
+    currentDay = createEvent(currentDay, { type: "delivery_start", at, zoneId, payload: { afterSorting: true } });
+    linkLatestEvent(zoneId, "delivery_start", "deliveryStartEventId");
+  }
   currentDay = applyCompletedZoneEdit(currentDay, { zoneId, sortingEndAt: at, reason: "missing_sorting_end_reconcile" });
   const axisIssue = validateTimeAxis(currentDay)[0];
   currentDay = withLogInlineAdjustment(
@@ -2700,10 +2749,11 @@ async function saveLogCoreEventEdit(event: TimelineEvent): Promise<void> {
       delete payload.total;
     }
     await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
-    currentDay = updateEvent(currentDay, event.id, { at, payload });
+    currentDay = applyLinkedEventTime(currentDay, event.id, at);
+    currentDay = updateEvent(currentDay, event.id, { payload: { ...currentDay.timeline.find(e => e.id === event.id)?.payload, ...payload } });
   } else {
     await savePreparedSnapshot("log-inline-before", { kind: "date", date: currentDay.date });
-    currentDay = updateEvent(currentDay, event.id, { at });
+    currentDay = applyLinkedEventTime(currentDay, event.id, at);
   }
 
   const axisIssue = validateTimeAxis(currentDay)[0];
@@ -2853,7 +2903,7 @@ function withLogInlineAdjustment(dayRecord: DayRecord, eventId: string, reason: 
     ...dayRecord,
     adjustments: [
       ...dayRecord.adjustments,
-      { id: `${reason}-${Date.now()}`, eventId, reason, note, createdAt },
+      { id: `${reason}-${crypto.randomUUID()}`, eventId, reason, note, createdAt },
     ],
     meta: {
       ...dayRecord.meta,
@@ -2891,18 +2941,20 @@ async function convertCompletedZoneToHelper(zoneId: string, kind: "free_received
   const label = getHelperKindLabel(kind);
   if (!confirm(`${zone.name} ${quantity}개를 ${label}으로 전환할까요? 전환 전 백업을 먼저 만듭니다.`)) return;
   await savePreparedSnapshot("helper-convert-before", { kind: "date", date: currentDay.date });
-  const linkedEventIds = currentDay.timeline
-    .filter((event) => event.zoneId === zoneId)
-    .map((event) => event.id);
+  const sourceZoneSnapshot = captureHelperZone(currentDay, zone);
+  const linkedEventIds = sourceZoneSnapshot.timeline.map(event => event.id);
+  const removedIds = new Set(linkedEventIds);
+  const removedHelpers = new Set(sourceZoneSnapshot.helpers.map(helper => helper.id));
   const at = end.at;
   currentDay = {
     ...currentDay,
-    timeline: currentDay.timeline.filter((event) => event.zoneId !== zoneId),
+    timeline: currentDay.timeline.filter((event) => !removedIds.has(event.id)),
+    helpers: currentDay.helpers.filter(helper => !removedHelpers.has(helper.id)),
     zones: currentDay.zones.filter((candidate) => candidate.id !== zoneId),
     adjustments: [
       ...currentDay.adjustments,
       {
-        id: `helper-convert-${Date.now()}`,
+        id: `helper-convert-${crypto.randomUUID()}`,
         eventId: end.id,
         reason: "completed_zone_to_helper",
         note: `${zone.name} ${quantity} -> ${label}`,
@@ -2923,6 +2975,7 @@ async function convertCompletedZoneToHelper(zoneId: string, kind: "free_received
     name: label,
     memo: `${zone.name} 완료 기록에서 전환`,
     sourceZoneId: zoneId,
+    sourceZoneSnapshot,
     previousEventIds: linkedEventIds,
   });
   toast(`${label}으로 전환했습니다.`);
@@ -2993,7 +3046,7 @@ async function saveHelperCorrection(helperId?: string): Promise<void> {
     adjustments: [
       ...currentDay.adjustments,
       {
-        id: `helper-correction-${Date.now()}`,
+        id: `helper-correction-${crypto.randomUUID()}`,
         eventId: helper.linkedEventIds[0],
         reason: "helper_record_correction",
         note: `${helper.name} -> ${label}${quantity > 0 ? ` ${quantity}개` : " 수량 미기록"}`,
@@ -3064,17 +3117,19 @@ async function restoreHelperToZone(helperId?: string): Promise<void> {
   const zoneName = getRestoredZoneName(target);
   if (!confirm(`${helper.name} ${quantity}개를 ${zoneName} 구역 기록으로 복구할까요? 복구 전 백업을 먼저 만듭니다.`)) return;
   await savePreparedSnapshot("helper-restore-before", { kind: "date", date: currentDay.date });
+  const restored = restoreConvertedHelperZone(currentDay, helper, event, target === "miju" ? "miju" : target === "hils" ? "hils" : "alt", quantity);
+  if (restored) {
+    assertDayRecord(restored, "복구할 구역 원본");
+    currentDay = restored;
+    normalizeZoneOrdersByActualStart();
+    activeCorrectionTargetId = `zone:${(payload?.sourceZoneSnapshot as HelperZoneSnapshot).zone.id}`;
+    toast("원래 구역의 시간과 상세 기록을 복구했습니다.");
+    await saveAndRender();
+    return;
+  }
   const endAt = event.at;
-  const proposedStartAt = addMinutes(endAt, -5);
-  const arriveAt = currentDay.timeline.find((candidate) => candidate.type === "arrive_cheongnyangni")?.at;
-  const previousEndAt = currentDay.timeline
-    .filter((candidate) => candidate.type === "zone_end" && !isAfter(candidate.at, endAt))
-    .map((candidate) => candidate.at)
-    .sort((left, right) => right.localeCompare(left))[0];
-  const lowerBound = [arriveAt, previousEndAt]
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => right.localeCompare(left))[0];
-  const startAt = lowerBound && isBefore(proposedStartAt, lowerBound) ? lowerBound : proposedStartAt;
+  // Old helpers have no original interval. Keep efficiency unknown until edited.
+  const startAt = endAt;
   currentDay = {
     ...currentDay,
     timeline: currentDay.timeline.filter((candidate) => !linkedIds.has(candidate.id)),
@@ -3082,7 +3137,7 @@ async function restoreHelperToZone(helperId?: string): Promise<void> {
     adjustments: [
       ...currentDay.adjustments,
       {
-        id: `helper-restore-${Date.now()}`,
+        id: `helper-restore-${crypto.randomUUID()}`,
         eventId: event.id,
         reason: "helper_to_zone_restore",
         note: `${helper.name} ${quantity}개 -> ${zoneName}`,
@@ -3109,10 +3164,10 @@ async function restoreHelperToZone(helperId?: string): Promise<void> {
       reviewedLater: true,
       restoredFromHelperId: helperId,
     },
-    note: "도우미 기록에서 구역으로 복구됨. 시간/상세 검토 필요.",
+    note: "원본 시작 시각이 없는 도우미 기록에서 복구됨. 로그에서 실제 시작 시각 정정 필요.",
   });
   normalizeZoneOrdersByActualStart();
-  toast(`${zoneName} ${quantity}개 구역 기록으로 복구했습니다. 시간은 검토 필요로 남겼습니다.`);
+  toast(`${zoneName} ${quantity}개를 복구했습니다. 원본 시작 시각이 없어 효율은 미확정입니다. 로그에서 시작 시각을 고쳐주세요.`);
   await saveAndRender();
 }
 
@@ -3123,11 +3178,12 @@ function addReceivedHelperRecord(input: {
   name: string;
   memo?: string;
   sourceZoneId?: string;
+  sourceZoneSnapshot?: HelperZoneSnapshot;
   previousEventIds?: string[];
 }): void {
   if (!currentDay) return;
-  const helperId = `helper-${input.kind}-${Date.now()}`;
-  const helperEventId = `helper-event-${input.kind}-${Date.now()}`;
+  const helperId = `helper-${input.kind}-${crypto.randomUUID()}`;
+  const helperEventId = `helper-event-${input.kind}-${crypto.randomUUID()}`;
   currentDay = createEvent(currentDay, {
     id: helperEventId,
     type: "helper_add",
@@ -3140,6 +3196,7 @@ function addReceivedHelperRecord(input: {
       ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
       countsForEfficiency: input.kind === "paid_received",
       sourceZoneId: input.sourceZoneId,
+      ...(input.sourceZoneSnapshot ? { sourceZoneSnapshot: input.sourceZoneSnapshot } : {}),
     },
     note: input.memo || undefined,
   });
@@ -3202,6 +3259,10 @@ function addZoneEvent(type: "sorting_start" | "sorting_end", zoneId: string): vo
   ensureZone(zoneId);
   currentDay = createEvent(currentDay, { type, at: resolveZoneEventAt(type, zoneId), zoneId });
   linkLatestEvent(zoneId, type, type === "sorting_start" ? "sortingStartEventId" : "sortingEndEventId");
+  if (type === "sorting_end" && !hasZoneEvent(zoneId, "delivery_start")) {
+    currentDay = createEvent(currentDay, { type: "delivery_start", at: latestZoneEvent(zoneId, "sorting_end")!.at, zoneId, payload: { afterSorting: true } });
+    linkLatestEvent(zoneId, "delivery_start", "deliveryStartEventId");
+  }
 }
 
 function ensureDeliveryStartBeforeZoneEnd(zoneId: string, endAt: string | undefined): void {
@@ -3329,13 +3390,22 @@ async function applyPendingQuantityRisk(mode: "adjusted" | "actual" | "override"
 
 async function correctCleanup(zoneId?: string): Promise<void> {
   if (!currentDay || !zoneId) return;
+  const sortingStart = latestZoneEvent(zoneId, "sorting_start");
+  if (!sortingStart) return;
+  const minutes = readNumber("#cleanup-input", 30);
   const result = applyMissingCleanupCorrection(currentDay, {
     zoneId,
-    closeAt: findLatestZoneCloseAt(currentDay, zoneId) ?? nowIso(),
-    minutes: readNumber("#cleanup-input", 30),
+    closeAt: addMinutes(sortingStart.at, minutes),
+    minutes,
     source: "zone_close_prompt",
   });
   currentDay = result.dayRecord;
+  const delivery = latestZoneEvent(zoneId, "delivery_start");
+  if (delivery) currentDay = applyLinkedEventTime(currentDay, delivery.id, result.sortingEndAt);
+  else {
+    currentDay = createEvent(currentDay, { type: "delivery_start", at: result.sortingEndAt, zoneId, payload: { afterSorting: true } });
+    linkLatestEvent(zoneId, "delivery_start", "deliveryStartEventId");
+  }
   await saveAndRender();
 }
 
@@ -3396,26 +3466,10 @@ function validateZoneEditTimes(zoneId: string, input: {
   sortingStartAt?: string;
   sortingEndAt?: string;
 }): string | undefined {
-  if (isAfter(input.startAt, input.endAt)) return "구역 시작 시각이 종료 시각보다 늦습니다.";
-  if (isBefore(input.deliveryStartAt, input.startAt)) return "배송 시작은 구역 시작보다 빠를 수 없습니다.";
-  if (isAfter(input.deliveryStartAt, input.endAt)) return "배송 시작은 구역 종료보다 늦을 수 없습니다.";
-  if (isAfter(input.sortingStartAt, input.sortingEndAt)) return "정리 시작 시각이 정리 완료 시각보다 늦습니다.";
-  if (isAfter(input.startAt, input.sortingStartAt)) return "정리 시작 시각이 구역 시작보다 빠를 수 없습니다.";
-  if (isAfter(input.sortingEndAt, input.endAt)) return "정리 완료 시각이 구역 종료보다 늦을 수 없습니다.";
-  if (isAfter(input.sortingEndAt, input.deliveryStartAt)) return "배송 시작은 정리 완료보다 빠를 수 없습니다.";
-  const arrive = currentDay?.timeline.find((event) => event.type === "arrive_cheongnyangni");
-  if (isBefore(input.startAt, arrive?.at)) return "구역 시작은 청량리 도착보다 빠를 수 없습니다.";
-
-  const previousEndAt = getPreviousZoneEndAt(zoneId);
-  if (isBefore(input.startAt, previousEndAt)) return "구역 시작은 이전 구역 완료보다 빠를 수 없습니다.";
-
-  const nextStartAt = getNextZoneStartAt(zoneId);
-  if (isAfter(input.endAt, nextStartAt)) return "구역 종료는 다음 구역 시작보다 늦을 수 없습니다.";
-
-  const dayClose = currentDay?.timeline.find((event) => event.type === "day_close");
-  if (isAfter(input.endAt, dayClose?.at)) return "구역 종료는 업무 종료보다 늦을 수 없습니다.";
+  // Validate the linked candidate, never the stale counterpart still in the form.
   if (currentDay) {
-    const candidate = applyCompletedZoneEdit(currentDay, {
+    let candidate: DayRecord;
+    try { candidate = applyCompletedZoneEdit(currentDay, {
       zoneId,
       startAt: input.startAt,
       deliveryStartAt: input.deliveryStartAt,
@@ -3423,7 +3477,7 @@ function validateZoneEditTimes(zoneId: string, input: {
       sortingEndAt: input.sortingEndAt,
       endAt: input.endAt,
       reason: "time_axis_preview",
-    });
+    }); } catch (error) { return error instanceof Error ? error.message : "연결된 시각을 확인하세요."; }
     const axisIssue = validateTimeAxis(candidate)[0];
     if (axisIssue) return axisIssue.message;
   }
@@ -4125,7 +4179,9 @@ function mergeCurrentDateAndTime(value: string, existingIso?: string): string | 
   if (existing && !Number.isNaN(existing.getTime()) && formatTimeOnlyValue(existing) === value) {
     return existingIso;
   }
-  const [year, month, day] = currentDay.date.split("-").map(Number);
+  const [year, month, day] = existing && !Number.isNaN(existing.getTime())
+    ? [existing.getFullYear(), existing.getMonth() + 1, existing.getDate()]
+    : currentDay.date.split("-").map(Number);
   const hour = Number(match[1]);
   const minute = Number(match[2]);
   if (!year || !month || !day || hour > 23 || minute > 59) return undefined;
@@ -4455,7 +4511,7 @@ function getReceivedHelperQuantityTotal(): number {
 
 function hasHelperSourceZone(event?: TimelineEvent): boolean {
   const payload = event?.payload as { sourceZoneId?: unknown } | undefined;
-  return typeof payload?.sourceZoneId === "string" && payload.sourceZoneId.length > 0;
+  return typeof payload?.sourceZoneId === "string" && Boolean(currentDay?.zones.some(zone => zone.id === payload.sourceZoneId));
 }
 
 function toMijuParts(

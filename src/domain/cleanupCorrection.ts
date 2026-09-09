@@ -99,7 +99,7 @@ export function applyMissingCleanupCorrection(
     adjustments: [
       ...next.adjustments,
       {
-        id: `cleanup-correction-${Date.now()}`,
+        id: `cleanup-correction-${crypto.randomUUID()}`,
         eventId: sortingEndId || undefined,
         reason: "missing_cleanup_finish",
         note: `cleanup=${request.minutes} min, anchor=${request.closeAt}, source=${source}`,

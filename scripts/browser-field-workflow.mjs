@@ -6,8 +6,10 @@ import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { build } from "esbuild";
 import { runSafetyChecks } from "./browser-safety-cases.mjs";
+import { runTimeChecks } from "./browser-time-cases.mjs";
+import { runCorrectionParity } from "./browser-correction-parity.mjs";
 
-const output = await mkdtemp(join(tmpdir(), "delivery-field-v36-"));
+const output = await mkdtemp(join(tmpdir(), "delivery-field-v37-"));
 await cp("public", join(output, "web"), { recursive: true });
 await mkdir(join(output, "web/assets"), { recursive: true });
 await build({ entryPoints: ["src/app/main.ts"], bundle: true, format: "esm", target: "es2022", outfile: join(output, "web/assets/app.js"),
@@ -145,6 +147,7 @@ try {
     await send("Emulation.setDeviceMetricsOverride",{width,height:762,deviceScaleFactor:2.63,mobile:true});
     assert.equal(await ev("document.documentElement.scrollWidth>innerWidth"),false,"horizontal overflow "+width);
   };
+  if (!process.env.TIME_ONLY) {
   await seed(fixture());
   assert.equal(await ev('getComputedStyle(document.documentElement).fontFamily'),"sans-serif");
   assert.equal(await ev('document.querySelectorAll(".tabbar svg").length'),5);
@@ -290,6 +293,9 @@ await seed(newDay());await clock(10,0);
   const overlap=await ev('(()=>{const nav=document.querySelector(".tabbar");return [...nav.querySelectorAll("button")].some(b=>b.scrollWidth>b.clientWidth+1)})()');
   assert.equal(overlap,false,"large text nav clipped");
   checks.push("150percent text at360 has no horizontal overflow or clipped navigation");
+  }
+  await runTimeChecks({ev,send,seed,fixture,read,click,input,tab,until,pause,shot,checks,date,clock});
+  await runCorrectionParity({ev,seed,fixture,read,click,input,tab,until,pause,checks,date});
   assert.deepEqual(errors,[]);
   await writeFile(join(output,"result.json"),JSON.stringify({passed:true,checks,errors},null,2));
   console.log(JSON.stringify({passed:true,checks,artifacts:output},null,2));

@@ -1,4 +1,6 @@
 import { sortTimeline } from "./eventTimeline";
+import { linkTimePatches } from "./timeLinks";
+import { getZoneKind } from "./zoneIdentity";
 import type { AdjustmentRecord, DayRecord, TimelineEvent, TimelineEventPayload } from "./types";
 
 export interface CompletedZoneEditInput {
@@ -25,7 +27,7 @@ export function applyCompletedZoneEdit(dayRecord: DayRecord, input: CompletedZon
   if (!zone) return dayRecord;
 
   const now = new Date().toISOString();
-  const updates = buildEventUpdates(dayRecord, input, zone);
+  const updates = linkTimePatches(dayRecord, buildEventUpdates(dayRecord, input, zone));
   if (updates.size === 0) return dayRecord;
 
   const timeline = sortTimeline(dayRecord.timeline.map((event) => {
@@ -36,7 +38,7 @@ export function applyCompletedZoneEdit(dayRecord: DayRecord, input: CompletedZon
     id: createAdjustmentId(dayRecord, now),
     eventId: zone.endEventId,
     reason: input.reason ?? "completed_zone_edit",
-    note: `Edited completed zone ${zone.id}`,
+    note: `Edited zone ${zone.id}; linked events: ${[...updates.keys()].join(", ")}`,
     createdAt: now,
   };
 
@@ -89,17 +91,12 @@ function buildEventUpdates(
   if (sortingStart && input.sortingStartAt) updates.set(sortingStart.id, { at: input.sortingStartAt });
   if (sortingEnd && input.sortingEndAt) {
     updates.set(sortingEnd.id, { at: input.sortingEndAt });
-    if (deliveryStart && isAutoCorrectedDeliveryStart(deliveryStart)) {
-      if (!manualDeliveryStartChanged && deliveryStart.at !== input.sortingEndAt) {
-        updates.set(deliveryStart.id, { at: input.sortingEndAt });
-      }
-    }
   }
   if (end) {
     const nextPayload = buildZoneEndPayload(
       end.payload,
       input,
-      zone.id === "miju" || zone.name === "미주",
+      getZoneKind(zone) === "miju",
     );
     const patch: Partial<TimelineEvent> = {};
     if (input.endAt) patch.at = input.endAt;

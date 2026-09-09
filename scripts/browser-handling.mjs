@@ -195,7 +195,7 @@ try {
         env: { ...process.env, SMOKE_BASE: base, CDP_PORT: String(cdpPort), SMOKE_SCREENSHOT: join(output, "regression.png") } });
       child.on("error", reject); child.on("exit", c => c === 0 ? resolve() : reject(Error("regression exit " + c)));
     });
-    checks.push("existing-browser-smoke-and-alt-stress");
+    checks.push("current-isolated-field-and-storage-regression");
   }
   await writeFile(join(output, "result.json"), JSON.stringify({ viewport: "411x762 DPR2.63 (+360)", checks, errors }, null, 2));
   console.log(JSON.stringify({ passed: true, checks, artifacts: output }, null, 2));

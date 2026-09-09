@@ -201,7 +201,7 @@ function calculateReceivedHelperCounts(dayRecord: DayRecord): {
       ? payload.quantity
       : 0;
     if (quantity <= 0 || payload.unpaid === true) continue;
-    const isZoneContribution = typeof payload.sourceZoneId === "string" && payload.sourceZoneId.length > 0;
+    const isZoneContribution = typeof payload.sourceZoneId === "string" && dayRecord.zones.some(zone => zone.id === payload.sourceZoneId);
     if (payload.helperKind === "paid_received") {
       counts.paid += quantity;
       if (isZoneContribution) counts.zonePaid += quantity;

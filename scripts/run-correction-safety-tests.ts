@@ -203,21 +203,17 @@ const reconciledSameSortingEnd = applyCompletedZoneEdit(sameSortingEndAfterInser
 });
 assert.equal(reconciledSameSortingEnd.timeline.find((event) => event.id === "delivery-start")?.at, "2026-09-05T09:40:00+09:00");
 
-const manualStart = applyCompletedZoneEdit(baseDay(), {
+assert.throws(() => applyCompletedZoneEdit(baseDay(), {
   zoneId: "zone-a",
   sortingEndAt: "2026-09-05T09:40:00+09:00",
   deliveryStartAt: "2026-09-05T09:35:00+09:00",
-});
-assert.equal(manualStart.timeline.find((event) => event.id === "delivery-start")?.at, "2026-09-05T09:35:00+09:00");
+}), /연결된 시각/);
 
-const manualOverrideOfAutoStart = applyCompletedZoneEdit(autoCorrected, {
+assert.throws(() => applyCompletedZoneEdit(autoCorrected, {
   zoneId: "zone-a",
   sortingEndAt: "2026-09-05T09:40:00+09:00",
   deliveryStartAt: "2026-09-05T09:35:00+09:00",
-});
-const manualOverrideEvent = manualOverrideOfAutoStart.timeline.find((event) => event.id === "delivery-start");
-assert.equal(manualOverrideEvent?.at, "2026-09-05T09:35:00+09:00");
-assert.equal((manualOverrideEvent?.payload as Record<string, unknown>)?.autoCorrected, false);
+}), /연결된 시각/);
 
 const weightedReportDay = baseDay();
 weightedReportDay.timeline.push(

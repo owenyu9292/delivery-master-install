@@ -87,6 +87,7 @@ select { appearance: auto; }
 .timeline-edit-btn { color: var(--accent); border-radius: 6px; }
 .timeline-inline-editor,.timeline-entry.editing { background: var(--tint); }
 .handling-control { margin-top: 16px; padding-top: 12px; }
+.auto-cleanup-notice { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; color: var(--accent); font-size: 14px; }
 @media(max-width:560px) {
  .shell { padding: 0 0 88px; }
  .topbar h1 { font-size: 18px; }
