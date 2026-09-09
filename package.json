@@ -12,8 +12,10 @@
     "test:storage-safety": "tsx scripts/run-storage-safety-tests.ts",
     "test:sqlite-file": "tsx scripts/run-native-sqlite-safety-tests.ts",
     "test:correction-safety": "tsx scripts/run-correction-safety-tests.ts",
+    "test:zone-identity": "tsx scripts/run-zone-identity-tests.ts",
     "check": "npm run typecheck && npm run test && npm run test:platform && npm run test:sqlite && npm run test:runtime && npm run test:handling && npm run test:storage-safety && npm run test:sqlite-file && npm run test:correction-safety",
     "check:handling": "node scripts/browser-handling.mjs",
+    "check:field": "node scripts/browser-field-workflow.mjs",
     "check:browser": "node scripts/run-browser-checks.mjs",
     "check:codex": "node scripts/codex-precommit-check.mjs",
     "typecheck": "tsc --noEmit",
@@ -33,6 +35,7 @@
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.4.1",
     "@capacitor/filesystem": "^8.1.2",
-    "@capacitor/share": "^8.0.1"
+    "@capacitor/share": "^8.0.1",
+    "lucide": "^1.43.0"
   }
 }

@@ -16,6 +16,7 @@ export class FormDrafts {
     if (!key) return;
     const draft: Draft = { ...this.drafts[key] };
     for (const field of root.querySelectorAll<Field>("input,select,textarea")) {
+      if (field.closest(".route-sheet")) continue;
       const selector = this.selector(field);
       if (!selector || (field instanceof HTMLInputElement && field.type === "file")) continue;
       const initial = field instanceof HTMLSelectElement
@@ -47,6 +48,14 @@ export class FormDrafts {
       } catch { /* Ignore an obsolete draft selector without touching records. */ }
     }
     return restored;
+  }
+
+  moveField(key: string, before: string, after: string, value: string): void {
+    const draft = this.drafts[key] ?? {};
+    delete draft[before];
+    draft[after] = { value };
+    this.drafts[key] = draft;
+    this.persist();
   }
 
   clear(key: string): void {

@@ -1,4 +1,5 @@
 import { sortTimeline } from "./eventTimeline";
+import { getZoneKind } from "./zoneIdentity";
 import type {
   CalculationWarning,
   CountPayload,
@@ -108,7 +109,7 @@ export function calculateZone(
     zone?.name ?? zoneId,
     zoneId,
     endEvent,
-    zone?.id === "miju" || zone?.name === "미주" || zone?.name.toLowerCase() === "miju",
+    getZoneKind(zone) === "miju",
   );
 
   return {

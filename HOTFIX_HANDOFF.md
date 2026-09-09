@@ -1,11 +1,20 @@
 > 2026-09-09: 현재 작업 기준은 `instruction.md`이다. 이 문서의 과거 승인·작업 절차·모델·배포 규정은 강제하지 않는다. 기능 및 작업 이력은 참고용으로 보존하며, 수정 대상은 Android 인스톨판뿐이다.
 
-# 작업 기준 갱신 (2026-09-09)
+# v36 최신 작업 (2026-09-09)
+
+- 수정 대상은 Android 인스톨판뿐이며 PWA main/season2는 보관한다.
+- 실제 소스: 이 repo의 src/public/android. 브랜치 codex/hils-handling-minutes.
+- v36 APK 빌드 및 격리 브라우저 검수 완료. 공개 결과와 커밋은 VERIFICATION_v36.md의 배포 확인 절을 본다.
+- 다운로드 전달은 GitHub Release 페이지: https://github.com/owenyu9292/delivery-master-install/releases/tag/v36
+- 최신5건: (1) 하단 아이콘/탁색 블루 업무 UI (2) 한 곳에서 무제한 예정 추가·전환·삭제 (3) 방문ID 보존, 구역 순서 누적 차감, 미주 A/B 독립 (4) 저장 실패 복구·이중 누름·재수정·미방문 보고서 제외 (5) 시스템 폰트/배율 적용 및 APK 동일 서명. 실제 유료 폰트/폰 설치는 미확인.
+- 아래 v35 이하 내용은 당시 기록이다. 이번 앱 반영 여부는 위 절과 v36 검수 문서가 현재 상태다.
+
+# 작업 기준 갱신 이력 (2026-09-09)
 
 - 기존 프로젝트 강제 절차는 해제했다. instruction.md 기준으로 Android 인스톨판만 수정하고 그 외 진행 방식은 코기가 판단한다.
-- 이번 변경은 문서·작업 훅뿐이다. 앱 소스·APK는 v35 유지이며 디자인 시안·폰트 요청은 아직 앱에 반영하지 않았다.
+- 규칙 해제 커밋 당시에는 문서·작업 훅만 변경했다. 이후 v36에서 실제 디자인·폰트·구역 조작 구현 및 APK 작업을 진행했다.
 
-# 앱 인수인계 (2026-09-05 기준)
+# 과거 v35 앱 인수인계 (2026-09-05 기준)
 
 - 유일한 수정 대상: Android 인스톨 버전. 기존 개발앱 PWA 게시본 및 v1/season2는 원본 보관이며 수정·배포하지 않는다.
 - repo: C:\Codex55Workspace\delivery-master\delivery-master-install-deploy / 브랜치 codex/hils-handling-minutes / v35 소스·APK 커밋 541eaf0.

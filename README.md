@@ -2,6 +2,8 @@
 
 # delivery-master-install
 
+최신 인스톨판 작업: v36. 변경과 설치 안내는 [RELEASE_v36.md](RELEASE_v36.md), 실제 검수/배포 증거는 [VERIFICATION_v36.md](VERIFICATION_v36.md).
+
 ## Current Folder Role
 
 This folder is the Android install app source-of-truth and GitHub APK distribution repository for the Delivery Master app line inside:

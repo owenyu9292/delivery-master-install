@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "checks": [
+    "active hils->alt->miju->alt->miju->hils preserves IDs,times,A20,count100, reload",
+    "empty/zero/99999 blocked; recover count100; next zone never auto-starts",
+    "7 repeated alternates; reorder; alt13->miju19->alt21->hils17->miju20 = cumulative90; independent A; close cancel+confirm with unused plans",
+    "cancel preserves whole day; write failure retains editor and name; retry double-tap adds once; planned alt->miju->hils->remove; remove all still permits close",
+    "completion storage failure preserves day+100; retry double-tap makes one completion",
+    "150percent text at360 has no horizontal overflow or clipped navigation"
+  ],
+  "errors": []
+}

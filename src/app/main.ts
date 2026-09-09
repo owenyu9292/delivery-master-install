@@ -20,6 +20,8 @@ import type { ZoneQuantityComparison } from "../ui/uiScreens";
 import { APP_VERSION, SETTINGS_VERSION_LABEL, TOPBAR_VERSION_LABEL } from "./version";
 import { createAppRuntime } from "./appRuntime";
 import { FormDrafts } from "./formDrafts";
+import { fieldIcon, renderRouteSheet, type RouteSheetState } from "./fieldView";
+import { getZoneKind, type ZoneKind } from "../domain/zoneIdentity";
 
 const BASE_ZONE_IDS = ["miju", "hils"] as const;
 const MAX_REASONABLE_EXPECTED = 1200;
@@ -59,6 +61,7 @@ let historyReadErrors: string[] = [];
 let observedToday = todayKey();
 let historicalEditing = false;
 let rolloverChoice = false;
+let routeSheet: RouteSheetState | null = null;
 
 type AppTab = "work" | "log" | "report" | "stats" | "backup";
 type StatsTab = "week" | "month" | "date";
@@ -182,9 +185,9 @@ function render(): void {
   root.innerHTML = `
     <main class="shell">
       <header class="topbar">
-        <div>          <h1>배송마스터 <span class="app-version">${TOPBAR_VERSION_LABEL}</span></h1>
+        <div>          <h1>${fieldIcon("work")}배송마스터 <span class="app-version">${TOPBAR_VERSION_LABEL}</span></h1>
         </div>
-        <button class="icon-btn" data-action="refresh" title="새로고침">새로고침</button>
+        <button class="icon-btn" data-action="refresh" title="새로고침" aria-label="새로고침">${fieldIcon("refresh")}</button>
       </header>
 
       <section class="status-band">
@@ -200,14 +203,15 @@ function render(): void {
       ${calculation.warnings.filter((warning) => warning.code !== "missing_calculation_event").length ? `<aside class="warning" role="status">${calculation.warnings.filter((warning) => warning.code !== "missing_calculation_event").map((warning) => escapeHtml(warning.message)).join("<br>")}</aside>` : ""}
       ${renderActiveTabContent(calculation, report, history, pendingZone)}
     </main>
+    ${routeSheet ? renderRouteSheet(routeSheet, getOrderedZones().filter(z => !hasZoneStarted(z.id)), !!routeSheet.zoneId && !hasZoneStarted(routeSheet.zoneId), !!getOrderedZones().find(z => hasZoneStarted(z.id) && !hasZoneEnded(z.id)), calculation.totals.deliveredCount) : ""}
   `;
 
-  renderedFormKey = [currentDay.date, activeTab, activeLogEditEventId, getOrderedZones().find((zone) => !hasZoneEnded(zone.id))?.id ?? "closed"].join(":");
+  renderedFormKey = [currentDay.date, activeTab, activeLogEditEventId, getCurrentWorkZone()?.id ?? "closed"].join(":");
   if (formDrafts.restore(root, renderedFormKey)) {
     const notice = document.createElement("p");
     notice.className = "draft-notice";
     notice.setAttribute("role", "status");
-    notice.textContent = "미저장 입력을 복원했습니다. 저장된 기록은 변경되지 않았습니다.";
+    notice.textContent = "입력 복원됨 · 저장 전";
     root.querySelector(".tabbar")?.after(notice);
   }
   root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((button) => {
@@ -215,6 +219,9 @@ function render(): void {
   });
   bindNumericLimits();
   bindStatsDateInput();
+  updateQuantityPreview();
+  root.querySelectorAll<HTMLInputElement>(".quantity-input input,.building-grid input").forEach(input => input.addEventListener("input", updateQuantityPreview));
+  bindRouteSheet();
 }
 
 async function runButtonAction(button: HTMLButtonElement): Promise<void> {
@@ -226,6 +233,7 @@ async function runButtonAction(button: HTMLButtonElement): Promise<void> {
   if (rolloverChoice && !["continue-previous-day", "start-today", "set-tab", "open-log-edit", "close-log-edit", "save-log-edit"].includes(button.dataset.action ?? "")) return;
   const before = currentDay ? structuredClone(currentDay) : null;
   const beforeEditId = activeLogEditEventId;
+  const beforeRouteSheet = routeSheet ? { ...routeSheet, name: root.querySelector<HTMLInputElement>("#route-name")?.value ?? routeSheet.name } : null;
   const buttons = [...root.querySelectorAll<HTMLButtonElement>("button")];
   const disabled = buttons.map((element) => element.disabled);
   actionInProgress = true;
@@ -237,6 +245,7 @@ async function runButtonAction(button: HTMLButtonElement): Promise<void> {
   } catch (error) {
     console.error("Action failed", error);
     activeLogEditEventId = beforeEditId;
+    routeSheet = beforeRouteSheet;
     if (before) {
       try { currentDay = await store.getDay(before.date) ?? before; } catch { currentDay = before; }
     }
@@ -287,7 +296,7 @@ function renderTabs(): string {
   return `
     <nav class="tabbar" aria-label="화면 이동">
       ${tabs.map((tab) => `
-        <button class="${activeTab === tab.key ? "active" : ""}" data-action="set-tab" data-tab="${tab.key}">${tab.label}</button>
+        <button class="${activeTab === tab.key ? "active" : ""}" data-action="set-tab" data-tab="${tab.key}">${fieldIcon(tab.key)}<span>${tab.label}</span></button>
       `).join("")}
     </nav>
   `;
@@ -315,24 +324,16 @@ function renderActiveTabContent(
 }
 
 function renderWorkTab(calculation: DayCalculation, pendingZone: ZoneRecord | undefined): string {
+  const canPlan = hasEvent("arrive_cheongnyangni") && !hasEvent("day_close") && !isUnpaidHelperDay(currentDay!);
+  const next = getOrderedZones().find(z => !hasZoneStarted(z.id));
   return `
     ${renderCurrentStep()}
     ${pendingQuantityRisk ? renderQuantityRiskPanel(pendingQuantityRisk) : ""}
-    ${pendingZone ? renderCleanupCorrectionPanel(pendingZone.id) : ""}
-    ${renderEventPanel()}
-    <section class="panel">
-      <h2>오늘 요약</h2>
-      <div class="summary">
-        <span>총 ${calculation.totals.totalCount}개</span>
-        <span>완료 ${calculation.totals.deliveredCount}개</span>
-        <span>배송 ${formatMin(calculation.totals.deliveryMinutes)}</span>
-        <span>효율 ${formatEff(calculation.totals.efficiencyPerHour)}</span>
-      </div>
-    </section>
-    <section class="panel">
-      <h2>구역 현황</h2>
-      ${renderZoneCards()}
-    </section>
+    ${pendingZone ? hasZoneEnded(pendingZone.id) ? renderCleanupCorrectionPanel(pendingZone.id) : `<details class="work-details"><summary>정리 시간 보정</summary>${renderCleanupCorrectionPanel(pendingZone.id)}</details>` : ""}
+    ${canPlan ? `<div class="route-next"><button class="next-zone" data-action="open-route-plans">${fieldIcon("route")}<span><small>다음 구역</small>${next ? escapeHtml(next.name) : "예정 없음"}</span>${fieldIcon("next")}</button><button class="symbol-button add-zone" data-action="open-route-editor" title="구역 추가" aria-label="구역 추가">${fieldIcon("plus")}</button></div>` : ""}
+    ${renderEventPanel() ? `<details class="work-details"><summary>이벤트 · 도우미</summary>${renderEventPanel()}</details>` : ""}
+    <details class="work-details"><summary>오늘 요약 · ${calculation.totals.deliveredCount}개</summary><section class="panel"><div class="summary"><span>배송 ${formatMin(calculation.totals.deliveryMinutes)}</span><span>효율 ${formatEff(calculation.totals.efficiencyPerHour)}</span></div></section></details>
+    <details class="work-details"><summary>구역 현황</summary><section class="panel">${renderZoneCards()}</section></details>
   `;
 }
 
@@ -1023,7 +1024,7 @@ function buildLogEntriesForDay(dayRecord: DayRecord, calculation: DayCalculation
     } else if (event.type === "arrive_cheongnyangni") {
       entries.push({ ...baseEntry, title: "청량리 도착", detail: `운전: ${formatMin(getDriveMinutesForDay(dayRecord))}`, kind: "arrive" });
     } else if (event.type === "zone_start") {
-      const detail = event.zoneId === "miju" ? buildMijuStartDetailForDay(dayRecord) : buildMovementDetail(zoneCalc);
+      const detail = getZoneKind(dayRecord.zones.find(z => z.id === event.zoneId)) === "miju" ? buildMijuStartDetailForDay(dayRecord, event.zoneId) : buildMovementDetail(zoneCalc);
       entries.push({ ...baseEntry, title: `${getZoneOrderLabelForDay(dayRecord, event.zoneId)} 시작 · ${zoneName}`, detail, kind: "zone" });
     } else if (event.type === "delivery_start") {
       const corrected = payload?.autoCorrected === true;
@@ -1428,8 +1429,8 @@ function buildMijuStartDetail(): string | undefined {
   return buildMijuStartDetailForDay(currentDay);
 }
 
-function buildMijuStartDetailForDay(dayRecord: DayRecord): string | undefined {
-  const checkpoint = getMijuCheckpointForDay(dayRecord);
+function buildMijuStartDetailForDay(dayRecord: DayRecord, zoneId = "miju"): string | undefined {
+  const checkpoint = getMijuCheckpointForDay(dayRecord, zoneId);
   if (!checkpoint || checkpoint.aTotal <= 0) return undefined;
   return `1동 ${checkpoint.one} · 2동 ${checkpoint.two} · 3동 ${checkpoint.three} (A합계:${checkpoint.aTotal}개)`;
 }
@@ -1456,7 +1457,7 @@ function renderCurrentStep(): string {
   if (!hasEvent("depart_jinjeop")) return renderDepartStep();
   if (!hasEvent("arrive_cheongnyangni")) return renderArriveStep();
   if (isUnpaidHelperDay(currentDay) && !hasEvent("day_close")) return renderUnpaidHelperCloseStep();
-  if (currentDay.zones.length === 0) return renderWorkOrderStep();
+  if (currentDay.zones.length === 0) return renderExtraZoneChoiceStep();
 
   const activeZone = getCurrentWorkZone();
   if (activeZone) {
@@ -1517,88 +1518,43 @@ function renderWorkOrderStep(): string {
 }
 
 function renderZoneStartStep(zone: ZoneRecord): string {
-  const orderEditor = renderZoneOrderEditor();
-  const inProgressExtraButtons = shouldOfferExtraZoneBefore(zone)
-    ? `
-      <div class="field-action-note">
-        <strong>대체배송을 더 먼저 해야 하면 여기서 계속 추가합니다.</strong>
-        <span>추가한 대체배송은 ${escapeHtml(zone.name)} 앞에 끼워 넣고 바로 시작합니다.</span>
-      </div>
-      <div class="segmented">
-        <button data-action="add-alt-zone">대체배송 계속 추가</button>
-        <button class="secondary" data-action="add-custom-zone">추가구역 먼저 추가</button>
-      </div>
-    `
-    : "";
-  return `
-    <section class="panel focus">
-      <p class="step">${zone.order} / ${escapeHtml(zone.name)}</p>
-      <h2>${escapeHtml(zone.name)} 시작</h2>
-      <p class="hint">${zone.id === "miju" ? "미주는 1,2,3동과 나머지 수량을 나눠 입력합니다." : "배송 수량과 정리 시작/완료를 분리해서 기록합니다."}</p>
-      ${inProgressExtraButtons}
-      <div class="segmented">
-        <button data-action="zone-start" data-zone="${zone.id}">${escapeHtml(zone.name)} 시작</button>
-        ${isExtraZone(zone.id) ? `<button class="secondary" data-action="skip-zone" data-zone="${zone.id}">${escapeHtml(zone.name)} 없음</button>` : ""}
-      </div>
-      ${orderEditor}
-    </section>
-  `;
+  return `<section class="panel focus">
+    ${renderRouteHeading(zone)}
+    <p class="work-status">시작 전</p>
+    <div class="field-actions">
+      <button class="primary full-width" data-action="zone-start" data-zone="${zone.id}" data-start-mode="delivery">${escapeHtml(zone.name)} 시작</button>
+      ${getZoneKind(zone) !== "miju" ? `<button class="secondary full-width" data-action="zone-start" data-zone="${zone.id}" data-start-mode="sorting">정리부터 시작</button>` : ""}
+      <button class="text-button full-width" data-action="open-close-day">오늘 업무 마감</button>
+    </div>
+  </section>`;
 }
 
 function renderZoneOrderEditor(): string {
-  const zones = getOrderedZones().filter((zone) => !hasZoneStarted(zone.id));
-  return `
-    <div class="order-editor">
-      <strong>남은 작업 순서</strong>
-      ${zones.map((zone, index) => `
-        <div class="order-row">
-          <span>${zone.order}. ${escapeHtml(zone.name)}</span>
-          <div>
-            <button data-action="move-zone-up" data-zone="${zone.id}" ${index === 0 ? "disabled" : ""} title="위로">▲</button>
-            <button data-action="move-zone-down" data-zone="${zone.id}" ${index === zones.length - 1 ? "disabled" : ""} title="아래로">▼</button>
-          </div>
-        </div>
-      `).join("")}
-      <div class="segmented">
-        <button data-action="add-alt-zone-to-order">대체배송 추가</button>
-        <button data-action="add-custom-zone-to-order">추가구역 추가</button>
-      </div>
-      <label>추가구역 이름<input id="custom-zone-name" type="text" maxlength="24" placeholder="예: 상가 추가"></label>
-    </div>
-  `;
+  return '<button class="secondary full-width" data-action="open-route-plans">남은 작업 순서</button>';
 }
 
 function renderZoneWorkStep(zone: ZoneRecord): string {
-  if (zone.id === "miju") return renderMijuWorkStep();
-  if (zone.id === "hils") return renderHilsWorkStep();
-  return renderExtraZoneWorkStep(zone);
+  if (getZoneKind(zone) === "miju" && (!hasZoneEvent(zone.id, "sorting_start") || hasZoneEvent(zone.id, "sorting_end"))) return renderMijuWorkStep(zone);
+  return renderGenericZoneWorkStep(zone.id, { step: String(zone.order), title: zone.name, countInputId: getWorkCountInputId(zone), endLabel: zone.name + " 완료" });
 }
 
-function renderMijuWorkStep(): string {
-  const checkpoint = getMijuCheckpoint();
-  const savedText = checkpoint
-    ? `A구간 저장됨: 1동 ${checkpoint.one} / 2동 ${checkpoint.two} / 3동 ${checkpoint.three} / 합계 ${checkpoint.aTotal}`
-    : "1/2/3동을 먼저 기록한 뒤 미주 전체 수량을 넣으면 나머지는 자동 계산됩니다.";
-  return `
-    <section class="panel focus">
-      <p class="step">3 / 미주</p>
-      <h2>미주 수량 입력</h2>
-      <p class="hint">${savedText}</p>
-      <div class="form-grid compact-grid">
-        <label>1동<input id="miju-1-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.one ?? ""}" placeholder="예: 44"></label>
-        <label>2동<input id="miju-2-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.two ?? ""}" placeholder="예: 55"></label>
-        <label>3동<input id="miju-3-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.three ?? ""}" placeholder="예: 54"></label>
+function renderMijuWorkStep(zone: ZoneRecord): string {
+  const checkpoint = getMijuCheckpoint(zone.id);
+  return `<section class="panel focus">
+    ${renderRouteHeading(zone)}
+    <p class="work-status">배송 중 · ${formatTime(latestZoneEvent(zone.id, "zone_start")!.at)} 시작</p>
+    <div class="building-block">
+      <p class="section-label">1 · 2 · 3동</p>
+      <div class="building-grid">
+        <label>1동<input id="miju-1-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.one ?? ""}" placeholder="0"></label>
+        <label>2동<input id="miju-2-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.two ?? ""}" placeholder="0"></label>
+        <label>3동<input id="miju-3-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${checkpoint?.three ?? ""}" placeholder="0"></label>
       </div>
-      <button data-action="save-miju-detail" data-zone="miju">1/2/3동 기록</button>
-      ${checkpoint ? '<button class="secondary" data-action="clear-miju-detail" data-zone="miju">1/2/3동 기록 초기화</button>' : ""}
-      <label>미주 전체 수량<input id="miju-total-count" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="예: 321"></label>
-      <div class="miju-preview">
-        <strong>저장 기준</strong>
-        <span>나머지는 미주 전체 수량에서 1/2/3동 합계를 빼서 자동 계산됩니다.</span>
-      </div>
-      <button data-action="zone-end" data-zone="miju">미주 완료</button>
-    </section>
-  `;
+      <div class="record-row"><span>${checkpoint ? "기록됨 · " + checkpoint.aTotal + "개" : "선택 기록"}</span><button class="secondary" data-action="save-miju-detail" data-zone="${zone.id}">1/2/3동 기록</button>${checkpoint ? `<button class="symbol-button" data-action="clear-miju-detail" data-zone="${zone.id}" title="동별 기록 지우기" aria-label="동별 기록 지우기">${fieldIcon("close")}</button>` : ""}</div>
+    </div>
+    ${renderWorkQuantity(zone)}
+    <button class="primary full-width" data-action="zone-end" data-zone="${zone.id}">${escapeHtml(zone.name)} 완료</button>
+  </section>`;
 }
 
 function renderHilsStartStep(): string {
@@ -1622,23 +1578,7 @@ function renderHilsWorkStep(): string {
 }
 
 function renderExtraZoneChoiceStep(): string {
-  const extraCount = getExtraZones().length;
-  return `
-    <section class="panel focus">
-      <p class="step">5 / 추가 구역</p>
-      <h2>대체배송 또는 구역 추가</h2>
-      <p class="hint">오늘 중간중간 생긴 대체배송, 임시 구역, 추가 물량을 계속 붙입니다. 없으면 업무 종료로 넘어갑니다.</p>
-      <div class="segmented">
-        <button data-action="add-alt-zone">대체배송 계속 추가</button>
-        <button data-action="close-day">추가 없이 종료</button>
-      </div>
-      <div class="form-grid extra-zone-form">
-        <label>구역 이름<input id="custom-zone-name" type="text" maxlength="24" placeholder="예: 상가 추가"></label>
-        <button data-action="add-custom-zone">구역 추가</button>
-      </div>
-      ${extraCount > 0 ? `<p class="hint">오늘 추가 구역 ${extraCount}개가 기록됐습니다.</p>` : ""}
-    </section>
-  `;
+  return `<section class="panel focus"><p class="step">배송 완료</p><h2>오늘 수고했어요</h2><button class="primary full-width" data-action="open-close-day">오늘 업무 마감</button></section>`;
 }
 
 function renderExtraZoneWorkStep(zone: ZoneRecord): string {
@@ -1650,42 +1590,21 @@ function renderExtraZoneWorkStep(zone: ZoneRecord): string {
   });
 }
 
-function renderGenericZoneWorkStep(
-  zoneId: string,
-  options: { step: string; title: string; countInputId: string; endLabel: string },
-): string {
+function renderGenericZoneWorkStep(zoneId: string, options: { step: string; title: string; countInputId: string; endLabel: string }): string {
+  const zone = currentDay!.zones.find(z => z.id === zoneId)!;
   const sortingStarted = hasZoneEvent(zoneId, "sorting_start");
   const sortingEnded = hasZoneEvent(zoneId, "sorting_end");
   const deliveryStarted = hasZoneEvent(zoneId, "delivery_start");
-  const isReadyForCount = deliveryStarted || sortingEnded;
-
-  return `
-    <section class="panel focus">
-      <p class="step">${options.step}</p>
-      <h2>${options.title}</h2>
-      ${canCancelEmptyStartedExtraZone(zoneId) ? `
-        <button class="secondary" data-action="cancel-empty-extra-zone" data-zone="${zoneId}">잘못 추가함 · 취소</button>
-        <p class="hint">아직 작업 기록이 없을 때만 취소할 수 있습니다.</p>
-      ` : ""}
-      ${!sortingStarted && !deliveryStarted ? `
-        <div class="field-actions">
-          <button data-action="sorting-start" data-zone="${zoneId}">정리 시작</button>
-          <button class="secondary" data-action="delivery-start" data-zone="${zoneId}">바로 배송 시작</button>
-        </div>
-        <p class="hint">기본 흐름은 정리 시작입니다. 정리 없이 바로 배송할 때만 보조 버튼을 누릅니다.</p>
-      ` : ""}
-      ${sortingStarted && !sortingEnded ? `
-        <button data-action="sorting-end" data-zone="${zoneId}">정리 완료</button>
-        <p class="hint">정리가 끝나면 바로 정리 완료를 누르고 수량 입력으로 넘어갑니다.</p>
-      ` : ""}
-      ${isReadyForCount ? `
-        <label>전체 수량<input id="${options.countInputId}" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" placeholder="예: 560"></label>
-        <button data-action="zone-end" data-zone="${zoneId}">${options.endLabel}</button>
-        <p class="hint">뒤 구역에서는 당일 전체 수량을 넣어도 됩니다. 이전 완료 수량은 앱이 자동으로 뺍니다.</p>
-      ` : ""}
-      ${hasHandlingControl(zoneId) ? renderHandlingControl(zoneId, options.countInputId) : ""}
-    </section>
-  `;
+  const ready = deliveryStarted || sortingEnded;
+  return `<section class="panel focus">
+    ${renderRouteHeading(zone)}
+    <p class="work-status">${sortingStarted && !sortingEnded ? "정리 중" : ready ? "배송 중" : "작업 시작 전"} · ${formatTime(latestZoneEvent(zoneId, "zone_start")!.at)} 시작</p>
+    ${sortingStarted && !sortingEnded ? `<button class="primary full-width" data-action="sorting-end" data-zone="${zoneId}">정리 완료</button>` : ""}
+    ${!sortingStarted && !deliveryStarted ? `<div class="field-actions"><button class="primary full-width" data-action="delivery-start" data-zone="${zoneId}">바로 배송 시작</button><button class="secondary full-width" data-action="sorting-start" data-zone="${zoneId}">정리 시작</button></div>` : ""}
+    ${ready ? `${renderWorkQuantity(zone)}<button class="primary full-width" data-action="zone-end" data-zone="${zoneId}">${escapeHtml(zone.name)} 완료</button>` : ""}
+    ${hasHandlingControl(zoneId) ? renderHandlingControl(zoneId, options.countInputId) : ""}
+    ${canCancelEmptyStartedExtraZone(zoneId) ? `<button class="text-button full-width" data-action="cancel-empty-extra-zone" data-zone="${zoneId}">잘못 추가함 · 취소</button>` : ""}
+  </section>`;
 }
 
 function hasHandlingControl(zoneId: string): boolean {
@@ -1749,7 +1668,8 @@ function renderFinishedStep(): string {
     <section class="panel focus">
       <p class="step">완료</p>
       <h2>오늘 업무가 종료됐습니다</h2>
-      <p class="hint">리포트를 복사하거나, 아래 완료 구역 수정에서 잘못 찍은 값을 고칠 수 있습니다.</p>
+      <p class="hint">기록 저장됨</p>
+      <button class="primary full-width" data-action="set-tab" data-tab="log">오늘 로그</button>
     </section>
   `;
 }
@@ -1809,7 +1729,7 @@ function renderZoneCard(zoneId: string): string {
   const sortingStart = latestZoneEvent(zoneId, "sorting_start");
   const sortingEnd = latestZoneEvent(zoneId, "sorting_end");
   const count = readDeliveredPayload(end);
-  const showSorting = zoneId !== "miju";
+  const showSorting = !isMijuZone(zoneId);
   const status = end ? "완료" : start ? "진행" : "대기";
 
   return `
@@ -1844,7 +1764,7 @@ function renderCompletedZoneEditForm(zoneId: string): string {
     : typeof payload?.bTotal === "number"
       ? payload.bTotal
       : 0;
-  const quantitySummary = zoneId === "miju"
+  const quantitySummary = isMijuZone(zoneId)
     ? `미주 총합 ${delivered}개 / A ${aTotal}개 / 나머지 ${bTotal}개`
     : `배송 ${delivered}개 / 실패 ${failed}개 / 추가 ${extra}개`;
 
@@ -1856,8 +1776,8 @@ function renderCompletedZoneEditForm(zoneId: string): string {
         <label>시작 시간<input id="edit-${zoneId}-start" type="time" value="${formatIsoForTimeInput(start?.at)}"></label>
         <label>종료 시간<input id="edit-${zoneId}-end" type="time" value="${formatIsoForTimeInput(end?.at)}"></label>
       </div>
-      <div class="form-grid edit-count-grid ${zoneId === "miju" ? "miju-edit-grid" : "generic-edit-grid"}">
-        ${zoneId === "miju"
+      <div class="form-grid edit-count-grid ${isMijuZone(zoneId) ? "miju-edit-grid" : "generic-edit-grid"}">
+        ${isMijuZone(zoneId)
           ? `
             <label>1동<input id="edit-${zoneId}-1" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${one || ""}"></label>
             <label>2동<input id="edit-${zoneId}-2" type="text" inputmode="numeric" maxlength="3" data-numeric-limit="3" value="${two || ""}"></label>
@@ -1913,11 +1833,8 @@ function formatBucketShortLabel(key: ZoneQuantityComparison["buckets"][number]["
 }
 
 function getZoneBucket(dayRecord: DayRecord, zoneId: string): ZoneQuantityComparison["buckets"][number]["key"] {
-  const id = zoneId.toLowerCase();
-  const name = getZoneNameFromDay(dayRecord, zoneId);
-  if (id === "miju" || id.includes("miju") || name.includes("미주")) return "miju";
-  if (id === "hils" || id.includes("hils") || name.includes("힐스")) return "hils";
-  return "alternate";
+  const kind = getZoneKind(dayRecord.zones.find(z => z.id === zoneId));
+  return kind === "miju" ? "miju" : kind === "hils" ? "hils" : "alternate";
 }
 
 function getZoneNameFromDay(dayRecord: DayRecord, zoneId: string): string {
@@ -2053,6 +1970,8 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
 
   const action = button.dataset.action ?? "";
   const zoneId = button.dataset.zone;
+
+  if (await handleRouteAction(action, zoneId)) return;
 
   if (action === "continue-previous-day") {
     rolloverChoice = false;
@@ -2193,12 +2112,13 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     return;
   }
   if (action === "save-miju-detail") {
-    saveMijuCheckpoint();
+    if (!validateWorkDigits()) return;
+    saveMijuCheckpoint(zoneId);
     await saveAndRender();
     return;
   }
   if (action === "clear-miju-detail") {
-    clearMijuCheckpoint();
+    clearMijuCheckpoint(zoneId);
     await saveAndRender();
     return;
   }
@@ -2318,11 +2238,23 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     addEvent("arrive_cheongnyangni");
     if (currentDay && !isUnpaidHelperDay(currentDay)) ensureDefaultWorkOrder();
   }
-  if (action === "zone-start" && zoneId) addZoneStart(zoneId);
+  if (action === "zone-start" && zoneId) {
+    const running = getOrderedZones().find(z => hasZoneStarted(z.id) && !hasZoneEnded(z.id));
+    if (running && running.id !== zoneId) { toast("진행 중인 구역을 먼저 완료하세요."); return; }
+    addZoneStart(zoneId);
+    normalizeZoneOrdersByActualStart();
+    if (button.dataset.startMode === "sorting") addZoneEvent("sorting_start", zoneId);
+    else if (button.dataset.startMode === "delivery" || isMijuZone(zoneId)) addDeliveryStart(zoneId);
+  }
   if (action === "sorting-start" && zoneId) addZoneEvent("sorting_start", zoneId);
   if (action === "sorting-end" && zoneId) addZoneEvent("sorting_end", zoneId);
   if (action === "delivery-start" && zoneId) addDeliveryStart(zoneId);
-  if (action === "zone-end" && zoneId) await addZoneEnd(zoneId);
+  if (action === "zone-end" && zoneId) {
+    await addZoneEnd(zoneId);
+    if (hasZoneEnded(zoneId)) await saveAndRender();
+    else render();
+    return;
+  }
   if (action === "quantity-risk-reset") {
     pendingQuantityRisk = null;
     render();
@@ -2350,6 +2282,7 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     return;
   }
   if (action === "close-day") {
+    if (getOrderedZones().some(z => hasZoneStarted(z.id) && !hasZoneEnded(z.id))) { toast("진행 중인 구역을 먼저 완료하세요."); return; }
     const closeAt = isUnpaidHelperDay(currentDay) ? readHelperCloseAt() : nowIso();
     if (isUnpaidHelperDay(currentDay)) addUnpaidHelperEvent(closeAt);
     addEvent("day_close", undefined, closeAt);
@@ -2447,7 +2380,6 @@ function ensureDefaultWorkOrder(): void {
   if (!currentDay || currentDay.zones.length > 0) return;
   ensureZone("miju", "미주", 1);
   ensureZone("hils", "힐스테이트", 2);
-  ensureZone(createExtraZoneId("alt"), "대체배송", 3);
 }
 
 function addZoneToOrder(kind: "alt" | "custom", requestedName?: string): void {
@@ -2640,6 +2572,7 @@ async function saveSelectedZoneCorrection(zoneId: string): Promise<void> {
         ? {
             ...candidate,
             name: nextName,
+            kind: (["miju", "hils", "alt", "custom"].includes(kind) ? kind : "custom") as ZoneKind,
             counts: undefined,
             countsSourceEventIds: undefined,
             countsCalculatedAt: undefined,
@@ -3224,7 +3157,7 @@ function addReceivedHelperRecord(input: {
   ];
 }
 
-function saveMijuCheckpoint(): void {
+function saveMijuCheckpoint(zoneId = getCurrentWorkZone()?.id ?? "miju"): void {
   if (!currentDay) return;
   const parts = readMijuInputParts();
   if (parts.one + parts.two + parts.three <= 0) {
@@ -3235,7 +3168,7 @@ function saveMijuCheckpoint(): void {
   currentDay = createEvent(currentDay, {
     type: "manual_adjust",
     at: nowIso(),
-    zoneId: "miju",
+    zoneId,
     payload: {
       reason: "miju_a_checkpoint",
       building1Total: parts.one,
@@ -3249,12 +3182,14 @@ function saveMijuCheckpoint(): void {
   toast(`A구간 저장: ${aTotal}개`);
 }
 
-function clearMijuCheckpoint(): void {
+function clearMijuCheckpoint(zoneId = getCurrentWorkZone()?.id ?? "miju"): void {
   if (!currentDay) return;
+  formDrafts.clearFields(renderedFormKey, ["#miju-1-count", "#miju-2-count", "#miju-3-count"]);
+  root.querySelectorAll<HTMLInputElement>(".building-grid input").forEach(input => { input.value = ""; });
   currentDay = createEvent(currentDay, {
     type: "manual_adjust",
     at: nowIso(),
-    zoneId: "miju",
+    zoneId,
     payload: {
       reason: "miju_a_checkpoint_clear",
     },
@@ -3299,25 +3234,26 @@ function addDeliveryStart(zoneId: string): void {
 
 async function addZoneEnd(zoneId: string): Promise<void> {
   if (!currentDay || hasZoneEnded(zoneId)) return;
+  if (!validateWorkDigits()) return;
   ensureZone(zoneId);
-  if (zoneId !== "miju" && !hasZoneEvent(zoneId, "sorting_start") && !hasZoneEvent(zoneId, "delivery_start")) {
+  if (!isMijuZone(zoneId) && !hasZoneEvent(zoneId, "sorting_start") && !hasZoneEvent(zoneId, "delivery_start")) {
     toast("정리 시작 또는 바로 배송 시작을 먼저 선택하세요.");
     return;
   }
-  if (zoneId !== "miju" && hasZoneEvent(zoneId, "sorting_start") && !hasZoneEvent(zoneId, "sorting_end")) {
+  if (hasZoneEvent(zoneId, "sorting_start") && !hasZoneEvent(zoneId, "sorting_end")) {
     toast("정리 완료를 먼저 기록해야 합니다.");
     return;
   }
 
-  const mijuInput = zoneId === "miju" ? readMijuInputParts() : undefined;
-  const deliveredInput = zoneId === "miju" ? undefined : readZoneDelivered(zoneId);
-  if (zoneId === "miju" && mijuInput?.hasDetail && !mijuInput.totalHasValue) {
+  const mijuInput = isMijuZone(zoneId) ? readMijuInputParts() : undefined;
+  const deliveredInput = isMijuZone(zoneId) ? undefined : readZoneDelivered(zoneId);
+  if (isMijuZone(zoneId) && mijuInput?.hasDetail && !mijuInput.totalHasValue) {
     toast("미주 전체 수량을 입력해야 나머지를 자동 계산할 수 있습니다.");
     return;
   }
   const rawDelivered = mijuInput?.total ?? deliveredInput?.value ?? 0;
   const hasValue = mijuInput ? mijuInput.totalHasValue || mijuInput.hasDetail : Boolean(deliveredInput?.hasValue);
-  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue, { mijuInput });
+  const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue, { mijuInput, mode: "cumulative" });
   if (delivered === undefined) return;
   completeZoneEnd(zoneId, delivered, { mijuInput });
 }
@@ -3405,8 +3341,8 @@ async function correctCleanup(zoneId?: string): Promise<void> {
 
 async function saveCompletedZoneEdit(zoneId: string): Promise<void> {
   if (!currentDay) return;
-  const mijuEditInput = zoneId === "miju" ? readMijuEditInputParts(zoneId) : undefined;
-  const deliveredInput = zoneId === "miju" ? undefined : readLimitedNumberField(`#edit-${zoneId}-delivered`, 3);
+  const mijuEditInput = isMijuZone(zoneId) ? readMijuEditInputParts(zoneId) : undefined;
+  const deliveredInput = isMijuZone(zoneId) ? undefined : readLimitedNumberField(`#edit-${zoneId}-delivered`, 3);
   const rawDelivered = mijuEditInput?.total ?? deliveredInput?.value ?? 0;
   const hasValue = mijuEditInput ? mijuEditInput.totalHasValue || mijuEditInput.hasDetail : Boolean(deliveredInput?.hasValue);
   const delivered = resolveValidatedDelivered(zoneId, rawDelivered, hasValue, { riskContext: "block" });
@@ -3615,7 +3551,7 @@ function resolveZoneEventAt(type: "sorting_start" | "sorting_end", zoneId: strin
     const now = nowIso();
     return sortingStart && Date.parse(sortingStart.at) > Date.parse(now) ? sortingStart.at : now;
   }
-  if (zoneId === "miju") return nowIso();
+  if (isMijuZone(zoneId)) return nowIso();
   const previousEndAt = getPreviousZoneEndAt(zoneId);
   if (!previousEndAt) return nowIso();
   const previousEnd = new Date(previousEndAt);
@@ -3997,8 +3933,8 @@ function getActiveExtraZone(): ZoneRecord | undefined {
 
 function getCurrentWorkZone(): ZoneRecord | undefined {
   if (!currentDay) return undefined;
-  const activeExtra = getActiveExtraZone();
-  if (activeExtra) return activeExtra;
+  const active = getOrderedZones().find(z => hasZoneStarted(z.id) && !hasZoneEnded(z.id));
+  if (active) return active;
   return [...currentDay.zones]
     .sort((a, b) => a.order - b.order)
     .find((zone) => !hasZoneEnded(zone.id));
@@ -4045,17 +3981,17 @@ function getPreviousCompletedZone(): ZoneRecord | undefined {
     .sort((a, b) => b.order - a.order)[0];
 }
 
-function getMijuCheckpoint(): { one: number; two: number; three: number; rest: number; aTotal: number } | undefined {
+function getMijuCheckpoint(zoneId = getCurrentWorkZone()?.id ?? "miju"): { one: number; two: number; three: number; rest: number; aTotal: number } | undefined {
   if (!currentDay) return undefined;
-  return getMijuCheckpointForDay(currentDay);
+  return getMijuCheckpointForDay(currentDay, zoneId);
 }
 
-function getMijuCheckpointForDay(dayRecord: DayRecord): { one: number; two: number; three: number; rest: number; aTotal: number } | undefined {
+function getMijuCheckpointForDay(dayRecord: DayRecord, zoneId = "miju"): { one: number; two: number; three: number; rest: number; aTotal: number } | undefined {
   const event = [...dayRecord.timeline]
     .reverse()
     .find((candidate) =>
       candidate.type === "manual_adjust" &&
-      candidate.zoneId === "miju" &&
+      candidate.zoneId === zoneId &&
       typeof candidate.payload === "object" &&
       candidate.payload &&
       ["miju_a_checkpoint", "miju_a_checkpoint_clear"].includes(
@@ -4304,12 +4240,12 @@ function formatTimeOnlyValue(date: Date): string {
 }
 
 function readZoneDelivered(zoneId: string): { value: number; hasValue: boolean } {
-  if (zoneId === "miju") {
+  if (isMijuZone(zoneId)) {
     const parts = readMijuPayloadParts();
     return { value: parts.delivered, hasValue: parts.totalHasValue || parts.hasDetail };
   }
-  if (zoneId === "hils") return readLimitedNumberField("#hils-count", 3);
-  return readLimitedNumberField("#extra-count", 3);
+  if (getZoneKind(currentDay?.zones.find(z => z.id === zoneId)) === "hils") return readLimitedNumberField("#hils-count", 5);
+  return readLimitedNumberField("#extra-count", 5);
 }
 
 function readMijuPayloadParts(): MijuParts {
@@ -4329,7 +4265,7 @@ function readMijuInputParts(): MijuInputParts {
     three: three.hasValue ? three.value : checkpoint?.three || 0,
     rest: rest.hasValue ? rest.value : checkpoint?.rest || 0,
   };
-  const total = readLimitedNumberField("#miju-total-count", 3);
+  const total = readLimitedNumberField("#miju-total-count", 5);
   return {
     total: total.value,
     totalHasValue: total.hasValue,
@@ -4383,7 +4319,7 @@ function resolveValidatedDelivered(
   const mode = options.mode ?? "auto";
   const previousDelivered = getPreviousZoneDeliveredTotal(zoneId);
   const shouldSubtractCumulative =
-    (mode === "cumulative" || (mode === "auto" && previousDelivered > 0 && entered > previousDelivered)) &&
+    ((mode === "cumulative" && previousDelivered > 0) || (mode === "auto" && previousDelivered > 0 && entered > previousDelivered)) &&
     hasValue;
   if (shouldSubtractCumulative) {
     const adjusted = entered - previousDelivered;
@@ -4600,6 +4536,10 @@ function bindNumericLimits(): void {
   root.querySelectorAll<HTMLInputElement>("[data-numeric-limit]").forEach((input) => {
     input.addEventListener("input", () => {
       const maxDigits = parseInt(input.dataset.numericLimit ?? "3", 10);
+      if (input.closest(".quantity-input,.building-grid")) {
+        input.setCustomValidity(input.value === "" || new RegExp("^\\d{1," + maxDigits + "}$").test(input.value) ? "" : "0 이상의 정수로 입력하세요.");
+        return;
+      }
       input.value = input.value.replace(/\D/g, "").slice(0, maxDigits);
     });
   });
@@ -4694,6 +4634,147 @@ function formatDuration(value?: number): string {
   return rest === 0 ? `${hours}시간` : `${hours}시간 ${rest}분`;
 }
 
+function isMijuZone(zoneId: string): boolean {
+  return getZoneKind(currentDay?.zones.find(z => z.id === zoneId)) === "miju";
+}
+function validateWorkDigits(): boolean {
+  const invalid = [...root.querySelectorAll<HTMLInputElement>(".quantity-input input,.building-grid input")]
+    .find(input => input.value !== "" && !new RegExp("^\\d{1," + (input.dataset.numericLimit ?? "5") + "}$").test(input.value));
+  if (!invalid) return true;
+  toast("수량은 0 이상의 정수로 입력하세요. 잘못 입력한 값은 그대로 남겼습니다.");
+  invalid.focus();
+  return false;
+}
+function getWorkCountInputId(zone: ZoneRecord): string {
+  const kind = getZoneKind(zone);
+  return kind === "miju" ? "miju-total-count" : kind === "hils" ? "hils-count" : "extra-count";
+}
+function renderRouteHeading(zone: ZoneRecord): string {
+  return `<p class="step">${zone.order}구역</p><div class="route-heading"><h2>${escapeHtml(zone.name)}</h2><button class="kind-edit" data-action="open-route-editor" data-zone="${zone.id}" title="구역 변경">${getZoneKind(zone) === "alt" ? "대체배송" : "내 구역"}${fieldIcon("edit")}</button></div>`;
+}
+function renderWorkQuantity(zone: ZoneRecord): string {
+  return `<label class="quantity-label" for="${getWorkCountInputId(zone)}">오늘 누적 수량</label><div class="quantity-input"><input id="${getWorkCountInputId(zone)}" type="text" inputmode="numeric" maxlength="5" data-numeric-limit="5" placeholder="0"><span>개</span></div>
+  <div class="quantity-results"><div><small>이전 완료</small><strong data-preview="previous">-</strong></div><div><small>이번 구역</small><strong data-preview="current">-</strong></div><div><small>${getZoneKind(zone) === "miju" ? "나머지 동" : "오늘 누적"}</small><strong data-preview="last">-</strong></div></div><p class="quantity-error" data-preview="error" role="status" hidden></p>`;
+}
+function updateQuantityPreview(): void {
+  const zone = getCurrentWorkZone();
+  if (!zone) return;
+  const input = root.querySelector<HTMLInputElement>("#" + getWorkCountInputId(zone));
+  if (!input) return;
+  const previous = getPreviousZoneDeliveredTotal(zone.id);
+  const valid = /^\d+$/.test(input.value);
+  const total = valid ? Number(input.value) : undefined;
+  const count = total === undefined ? undefined : total - previous;
+  const aTotal = isMijuZone(zone.id) ? ["#miju-1-count", "#miju-2-count", "#miju-3-count"].reduce((sum, id) => sum + Number(root.querySelector<HTMLInputElement>(id)?.value || 0), 0) : 0;
+  const set = (key: string, value: number | undefined) => { const element = root.querySelector("[data-preview=" + key + "]"); if (element) element.textContent = value === undefined ? "-" : value + "개"; };
+  set("previous", previous);
+  set("current", count);
+  set("last", isMijuZone(zone.id) ? count === undefined ? undefined : count - aTotal : total);
+  const error = root.querySelector<HTMLElement>("[data-preview=error]");
+  if (error) {
+    const text = count !== undefined && count <= 0 ? "누적 수량이 이전 완료 " + previous + "개보다 커야 합니다." : count !== undefined && count < aTotal ? "이번 구역 수량보다 동별 합계가 큽니다." : "";
+    error.textContent = text; error.hidden = !text;
+  }
+}
+function bindRouteSheet(): void {
+  const dialog = root.querySelector<HTMLDialogElement>(".route-sheet");
+  if (!dialog || !routeSheet) return;
+  dialog.showModal();
+  dialog.addEventListener("cancel", event => { event.preventDefault(); routeSheet = null; render(); });
+  dialog.addEventListener("click", event => {
+    const r = dialog.getBoundingClientRect();
+    if (event.target === dialog && (event.clientY < r.top || event.clientX < r.left || event.clientX > r.right)) { routeSheet = null; render(); }
+  });
+  const rememberName = () => { if (routeSheet) routeSheet.name = root.querySelector<HTMLInputElement>("#route-name")?.value ?? routeSheet.name; };
+  root.querySelectorAll<HTMLInputElement>('[name="route-mode"]').forEach(input => input.addEventListener("change", () => {
+    rememberName();
+    if (!routeSheet) return;
+    routeSheet.kind = input.value === "alt" ? "alt" : "miju";
+    routeSheet.name = input.value === "alt" ? "대체배송" : "미주";
+    render();
+  }));
+  root.querySelector<HTMLSelectElement>("#route-place")?.addEventListener("change", event => {
+    rememberName();
+    if (!routeSheet) return;
+    routeSheet.kind = (event.target as HTMLSelectElement).value as ZoneKind;
+    routeSheet.name = routeSheet.kind === "miju" ? "미주" : routeSheet.kind === "hils" ? "힐스테이트" : "";
+    render();
+  });
+}
+async function handleRouteAction(action: string, zoneId?: string): Promise<boolean> {
+  if (!currentDay) return false;
+  if (action === "close-route-sheet") { routeSheet = null; render(); return true; }
+  if (action === "open-route-plans" || action === "open-close-day") {
+    routeSheet = { mode: action === "open-route-plans" ? "plans" : "close", kind: "alt", name: "" };
+    render(); return true;
+  }
+  if (action === "open-route-editor") {
+    const zone = currentDay.zones.find(z => z.id === zoneId);
+    routeSheet = { mode: "edit", zoneId: zone?.id, kind: zone ? getZoneKind(zone) : "alt", name: zone?.name ?? "대체배송" };
+    render(); return true;
+  }
+  if (action === "select-next-zone" && zoneId) {
+    if (hasZoneStarted(zoneId)) return true;
+    const pending = getOrderedZones().filter(z => !hasZoneStarted(z.id));
+    const target = pending.find(z => z.id === zoneId);
+    if (target) {
+      const slots = pending.map(z => z.order);
+      const reordered = [target, ...pending.filter(z => z.id !== zoneId)];
+      const orders = new Map(reordered.map((z, i) => [z.id, slots[i]!]));
+      currentDay.zones = currentDay.zones.map(z => orders.has(z.id) ? { ...z, order: orders.get(z.id)! } : z);
+    }
+    routeSheet = null; await saveAndRender(); return true;
+  }
+  if (action === "remove-planned-zone" && routeSheet?.zoneId) {
+    skipZone(routeSheet.zoneId);
+    routeSheet = { mode: "plans", kind: "alt", name: "" };
+    await saveAndRender(); return true;
+  }
+  if (action === "confirm-close-day") {
+    if (getOrderedZones().some(z => hasZoneStarted(z.id) && !hasZoneEnded(z.id))) { toast("진행 구역을 먼저 완료하세요."); return true; }
+    routeSheet = null;
+    const proxy = document.createElement("button");
+    proxy.dataset.action = "close-day";
+    await handleAction(proxy); return true;
+  }
+  if (action !== "save-route-editor" || !routeSheet) return false;
+  const { kind } = routeSheet;
+  const id = routeSheet.zoneId;
+  const name = kind === "miju" ? "미주" : kind === "hils" ? "힐스테이트" : readText("#route-name", "").trim();
+  if (!name) { toast("구역 이름을 입력하세요."); return true; }
+  const workZone = getCurrentWorkZone();
+  const oldInputId = workZone ? getWorkCountInputId(workZone) : "";
+  const rawCount = root.querySelector<HTMLInputElement>("#" + (oldInputId || "no-count"))?.value;
+  if (id) {
+    const existing = currentDay.zones.find(z => z.id === id);
+    if (!existing) { toast("수정할 구역을 찾지 못했습니다."); return true; }
+    if (hasZoneStarted(id)) await savePreparedSnapshot("route-edit-before", { kind: "date", date: currentDay.date });
+    const note = existing.name + " -> " + name;
+    currentDay = {
+      ...currentDay,
+      zones: currentDay.zones.map(z => z.id === id ? { ...z, name, kind } : z),
+      timeline: currentDay.timeline.map(e => e.zoneId === id && (e.type === "zone_start" || e.type === "zone_end") ? { ...e, payload: { ...e.payload, zoneName: name }, updatedAt: nowIso() } : e),
+      adjustments: [...currentDay.adjustments, { id: "route-" + crypto.randomUUID(), reason: "route_identity_edit", note, createdAt: nowIso() }],
+    };
+  } else {
+    const order = Math.max(0, ...currentDay.zones.map(z => z.order)) + 1;
+    currentDay.zones.push({ id: "visit-" + crypto.randomUUID(), name, kind, order });
+  }
+  routeSheet = null;
+  pendingQuantityRisk = null;
+  await saveAndRender();
+  if (rawCount !== undefined && workZone && workZone.id === id) {
+    const updated = currentDay.zones.find(z => z.id === id)!;
+    const newId = getWorkCountInputId(updated);
+    formDrafts.moveField(renderedFormKey, "#" + oldInputId, "#" + newId, rawCount);
+    const input = root.querySelector<HTMLInputElement>("#" + newId);
+    if (input) input.value = rawCount;
+    updateQuantityPreview();
+  }
+  toast(id ? "구역 변경을 저장했습니다." : "예정 구역에 추가했습니다.");
+  return true;
+}
+
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
@@ -4703,6 +4784,7 @@ function escapeAttribute(value: string): string {
 }
 
 function toast(message: string): void {
+  document.querySelectorAll(".toast").forEach(previous => previous.remove());
   const el = document.createElement("div");
   el.className = "toast";
   el.textContent = message;

@@ -11,6 +11,7 @@ import type {
 } from "../domain/types";
 import { buildDailyReport, buildPreviewModel, type ReportPreview } from "../domain/reportBuilder";
 import { createDateSummary, type DateSummary } from "../storage/dayStore";
+import { getZoneKind } from "../domain/zoneIdentity";
 
 export type UiScreenKey =
   | "work"
@@ -476,13 +477,12 @@ function buildZoneQuantityComparison(days: DayRecord[]): ZoneQuantityComparison 
 
 function classifyZone(dayRecord: DayRecord, zoneId: string): ZoneQuantityBucket["key"] {
   const zone = dayRecord.zones.find((item) => item.id === zoneId);
-  const id = zoneId.toLowerCase();
-  const name = (zone?.name || "").toLowerCase();
+  const kind = getZoneKind(zone);
 
-  if (id === "miju" || id.includes("miju") || name.includes("미주")) {
+  if (kind === "miju") {
     return "miju";
   }
-  if (id === "hils" || id.includes("hils") || name.includes("힐스")) {
+  if (kind === "hils") {
     return "hils";
   }
   return "alternate";

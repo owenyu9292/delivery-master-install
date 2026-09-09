@@ -111,6 +111,7 @@ export interface ZonePayload {
 export interface ZoneRecord {
   id: string;
   name: string;
+  kind?: "miju" | "hils" | "alt" | "custom";
   order: number;
   startEventId?: string;
   sortingStartEventId?: string;

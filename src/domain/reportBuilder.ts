@@ -1,4 +1,5 @@
 import type { DayCalculation, DayRecord, ReportResult, TimelineEvent, ZoneCalculation } from "./types";
+import { getZoneKind } from "./zoneIdentity";
 
 export interface ReportOptions {
   title?: string;
@@ -23,6 +24,8 @@ export function buildDailyReport(
   options: ReportOptions = {},
 ): ReportResult {
   const sourceEventIds = dayRecord.timeline.map((event) => event.id);
+  const reportZones = getReportZones(dayRecord, calculation);
+  const reportWarnings = getReportWarnings(dayRecord, calculation, reportZones);
   const expected = getExpectedTotal(dayRecord);
   const scanMiss = expected === undefined ? undefined : calculation.totals.totalCount - expected;
   const depart = firstEvent(dayRecord, "depart_jinjeop");
@@ -50,10 +53,10 @@ export function buildDailyReport(
     `전체 평균:   시간당 ${formatWholeEfficiency(totalEfficiency)}`,
     "",
     "[구역별 상세]",
-    ...calculation.zones.flatMap((zone, index) => buildZoneDetailLines(dayRecord, zone, index)),
+    ...reportZones.flatMap((zone, index) => buildZoneDetailLines(dayRecord, zone, index)),
     "",
     "[상세 효율]",
-    ...calculation.zones.flatMap((zone, index) => buildZoneEfficiencyLines(dayRecord, zone, index)),
+    ...reportZones.flatMap((zone, index) => buildZoneEfficiencyLines(dayRecord, zone, index)),
     "",
     "[정규 효율 (대체배송 제외)]",
     `  시간당 ${formatWholeEfficiency(regularEfficiency)}`,
@@ -71,9 +74,9 @@ export function buildDailyReport(
     }
   }
 
-  if (options.includeWarnings !== false && calculation.warnings.length > 0) {
+  if (options.includeWarnings !== false && reportWarnings.length > 0) {
     lines.push("", "[확인 필요]");
-    for (const warning of calculation.warnings) {
+    for (const warning of reportWarnings) {
       lines.push(`- ${warning.code}: ${warning.message}`);
     }
   }
@@ -84,8 +87,34 @@ export function buildDailyReport(
     date: dayRecord.date,
     text: lines.join("\n"),
     sourceEventIds,
-    warnings: calculation.warnings,
+    warnings: reportWarnings,
   };
+}
+
+function getReportZones(dayRecord: DayRecord, calculation: DayCalculation): ZoneCalculation[] {
+  const startedZoneIds = new Set(
+    dayRecord.timeline
+      .filter((event) => event.zoneId && (event.type === "zone_start" || event.type === "zone_end"))
+      .map((event) => event.zoneId as string),
+  );
+  return calculation.zones
+    .filter((zone) => startedZoneIds.has(zone.zoneId))
+    .sort((left, right) => getZoneOrder(dayRecord, left.zoneId) - getZoneOrder(dayRecord, right.zoneId));
+}
+
+function getReportWarnings(
+  dayRecord: DayRecord,
+  calculation: DayCalculation,
+  reportZones: ZoneCalculation[],
+): DayCalculation["warnings"] {
+  const reportZoneIds = new Set(reportZones.map((zone) => zone.zoneId));
+  return calculation.warnings.filter((warning) =>
+    warning.code !== "missing_calculation_event" || warning.zoneId === undefined || reportZoneIds.has(warning.zoneId),
+  );
+}
+
+function getZoneOrder(dayRecord: DayRecord, zoneId: string): number {
+  return dayRecord.zones.find((zone) => zone.id === zoneId)?.order ?? Number.MAX_SAFE_INTEGER;
 }
 
 function buildHelperSummaryLines(calculation: DayCalculation): string[] {
@@ -104,7 +133,7 @@ function buildHelperSummaryLines(calculation: DayCalculation): string[] {
 
 function calculateRegularEfficiency(dayRecord: DayRecord, calculation: DayCalculation): number | undefined {
   const completedZones = calculation.zones.filter((zone) =>
-    !isAlternativeZone(zone.zoneId) &&
+    getZoneKind(dayRecord.zones.find((candidate) => candidate.id === zone.zoneId)) !== "alt" &&
     firstZoneEvent(dayRecord, zone.zoneId, "zone_end") !== undefined,
   );
   if (completedZones.length === 0) return undefined;
@@ -118,10 +147,6 @@ function calculateRegularEfficiency(dayRecord: DayRecord, calculation: DayCalcul
   const minutes = completedZones.reduce((sum, zone) => sum + zone.deliveryMinutes!, 0);
   const count = completedZones.reduce((sum, zone) => sum + zone.efficiencyCount!, 0);
   return calculateEfficiency(count, minutes);
-}
-
-function isAlternativeZone(zoneId: string): boolean {
-  return zoneId.startsWith("alt-");
 }
 
 export function buildPreviewModel(
@@ -155,7 +180,7 @@ function buildZoneDetailLines(dayRecord: DayRecord, zone: ZoneCalculation, index
     `  배송 수량: ${zone.counts.delivered}개`,
   ];
 
-  if (zone.zoneId === "miju") {
+  if (getZoneKind(dayRecord.zones.find((candidate) => candidate.id === zone.zoneId)) === "miju") {
     const aTotal = numberOr(payload?.aTotal, sumNumbers(payload?.building1Total, payload?.building2Total, payload?.building3Total));
     const bTotal = numberOr(payload?.restTotal, numberOr(payload?.bTotal, Math.max(0, zone.counts.delivered - aTotal)));
     lines.push(`  A구간(1,2,3동): ${aTotal}개`);

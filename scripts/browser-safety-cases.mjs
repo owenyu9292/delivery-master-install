@@ -19,7 +19,7 @@ export async function runSafetyChecks({ ev, send, seed, fixture, read, click, in
   assert.equal(await ev('document.querySelector("#hils-count").value'), "123");
   await reload();
   assert.equal(await ev('document.querySelector("#hils-count").value'), "123");
-  assert.match(await ev("document.body.innerText"), /미저장 입력/);
+  assert.match(await ev("document.body.innerText"), /입력 복원됨/);
   const before = await read();
   await ev(`window.__saveDay=${runtime}.store.saveDay.bind(${runtime}.store);${runtime}.store.saveDay=async()=>{throw Error("TEST_WRITE_FAILED")}`);
   await click('[data-action="save-handling"]');
@@ -157,11 +157,13 @@ export async function runSafetyChecks({ ev, send, seed, fixture, read, click, in
   route.status = "active"; route.timeline = route.timeline.filter(e => e.type !== "day_close");
   route.zones.push({ id: "miju", name: "미주", order: 2 }, { id: "alt-1", name: "대체배송", order: 3 }, { id: "alt-2", name: "대체배송 2", order: 4 });
   await fresh(route);
+  await click('[data-action="open-route-plans"]');
   await click('[data-action="move-zone-up"][data-zone="alt-2"]');
   await click('[data-action="move-zone-up"][data-zone="alt-2"]');
   let ordered = (await read()).zones.sort((a,b)=>a.order-b.order).map(z=>z.id);
   assert.deepEqual(ordered, ["hils","alt-2","miju","alt-1"]);
-  await click('[data-action="add-alt-zone-to-order"]');
+  await click('.route-sheet [data-action="open-route-editor"]:not([data-zone])');
+  await click('[data-action="save-route-editor"]');
   assert.equal((await read()).zones.length, 5);
   assert.equal(await ev('new Set([...document.querySelectorAll("[id]")].map(e=>e.id)).size === document.querySelectorAll("[id]").length'), true);
   await shot("safety-route-411");
