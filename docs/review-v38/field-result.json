@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "checks": [
+    "active hils->alt->miju->alt->miju->hils preserves IDs,times,A20,count100, reload",
+    "empty/zero/99999 blocked; recover count100; next zone never auto-starts",
+    "7 repeated alternates; reorder; alt13->miju19->alt21->hils17->miju20 = cumulative90; independent A; close cancel+confirm with unused plans",
+    "cancel preserves whole day; write failure retains editor and name; retry double-tap adds once; planned alt->miju->hils->remove; remove all still permits close",
+    "completion storage failure preserves day+100; retry double-tap makes one completion",
+    "150percent text at360 has no horizontal overflow or clipped navigation",
+    "39min keeps sorting;40min sets09:30 finish+delivery;late11:00 resume/reload no extra finish button or duplicates",
+    "automatic boundary manual09:45->delivery09:50->reload->completion100->correct09:30; report90min, original start+completion unchanged",
+    "automatic write failure preserves original and sorting UI;retry simultaneous resume saves paired events once",
+    "cold reopen late creates anchored09:30;completed historical missing finish not silently changed",
+    "completed manual sort/delivery bidirectional; paired save failure atomic; genuine end conflict unknown efficiency then recover; count100 preserved",
+    "completed zone form validates linked candidate, not stale09:50 delivery value; accepts sorting10:00 and updates both",
+    "arrival->first zone+sorting boundary; final zone end<->day close both directions; independent work intervals stay fixed",
+    "after-midnight time edit retains next calendar date and linked close; does not jump back to work date",
+    "editing sorting start at40min blocks automatic overwrite; save09:10 restarts threshold;49none/50creates09:40",
+    "manual finish39min remains39 after late resume; automatic rule never overwrites manual record",
+    "stale sorting-finish button clicked after threshold creates09:30 not late11:00 and advances workflow",
+    "slow automatic save + stale finish tap + simultaneous focus callbacks serialize to one atomic write",
+    "hils-labelled records with explicit miju/alt/custom kind never receive automatic hils30 correction",
+    "completed zone->paid100->free100->zone repeated for alt/hils/miju; original visit ID/times/count preserved and editor remains available",
+    "restored same record quantity100->88->100 and name edit repeatedly without disappearing",
+    "legacy helper without original time restores count100 but no invented5min efficiency; log time correction remains required",
+    "ratio percentage visible; week back/forward, month12 back/12 forward, chosen date100 in current UI",
+    "statistics: 401 records; 18-month back/forward; same totals; 6-period trend; no NaN/Infinity",
+    "statistics: all detail panels, 411/360 widths, 150percent text, long names, no horizontal clipping",
+    "statistics: quality item opens date; tab changes and repeated navigation leave all 401 records unchanged"
+  ],
+  "errors": []
+}

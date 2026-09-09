@@ -1,4 +1,6 @@
 import { applyMissingCleanupCorrection, hasMissingCleanupFinish } from "../domain/cleanupCorrection";
+import { buildStatsModel, validStatsDate } from "../analytics/statistics";
+import { renderStatistics } from "../ui/statisticsView";
 import { DEFAULT_HANDLING_MINUTES, HANDLING_TITLE, findHandlingEvent, isHandlingEvent, readHandlingMinutes, setHandlingMinutes } from "../domain/handlingTime";
 import { applyCompletedZoneEdit } from "../domain/zoneEdit";
 import { applyLinkedEventTime } from "../domain/timeLinks";
@@ -432,9 +434,7 @@ function renderStatsSubtabs(): string {
 
 function renderWeeklyStats(history: DayRecord[]): string {
   const range = getWeekRange(statsWeekOffset);
-  const days = getHistoryInRange(history, range.start, range.end);
-  const stats = buildPeriodStats(days);
-  const title = statsWeekOffset === 0 ? "이번 주 비율" : `${formatDateRange(range.start, range.end)} 비율`;
+  const model = buildStatsModel(history, "week", dateKeyFromDate(range.start), dateKeyFromDate(range.end), todayKey());
 
   return `
     <div class="period-nav">
@@ -442,18 +442,14 @@ function renderWeeklyStats(history: DayRecord[]): string {
       <strong>${formatDateRange(range.start, range.end)}</strong>
       <button class="secondary" data-action="stats-week-next" aria-label="다음 주" title="다음 주" ${statsWeekOffset >= 0 ? "disabled" : ""}>&#8594;</button>
     </div>
-    ${renderQuantityComparison(title, stats.quantityComparison)}
-    ${renderPeriodSummary(stats)}
-    ${renderZonePeriodCards(stats)}
+    ${renderStatistics(model)}
     ${renderWeekDayCards(history, range.start, range.end)}
   `;
 }
 
 function renderMonthlyStats(history: DayRecord[]): string {
   const range = getMonthRange(statsMonthOffset);
-  const days = getHistoryInRange(history, range.start, range.end);
-  const stats = buildPeriodStats(days);
-  const title = statsMonthOffset === 0 ? "이번 달 비율" : `${formatMonthTitle(range.start)} 비율`;
+  const model = buildStatsModel(history, "month", dateKeyFromDate(range.start), dateKeyFromDate(range.end), todayKey());
 
   return `
     <div class="period-nav">
@@ -461,11 +457,7 @@ function renderMonthlyStats(history: DayRecord[]): string {
       <strong>${formatMonthTitle(range.start)}</strong>
       <button class="secondary" data-action="stats-month-next" aria-label="다음 달" title="다음 달" ${statsMonthOffset >= 0 ? "disabled" : ""}>&#8594;</button>
     </div>
-    ${renderQuantityComparison(title, stats.quantityComparison)}
-    ${renderPeriodSummary(stats)}
-    ${renderMonthlyVariation(stats)}
-    ${renderZonePeriodCards(stats)}
-    ${renderWeekdayAverage(days)}
+    ${renderStatistics(model)}
     ${renderMonthDayCards(history, range.start, range.end)}
   `;
 }
@@ -2058,6 +2050,16 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   if (action === "stats-week-prev") {
     statsWeekOffset -= 1;
     render();
+    return;
+  }
+
+  if (action === "stats-open-date") {
+    const date = button.dataset.date;
+    if (date && validStatsDate(date)) {
+      statsSelectedDate = date;
+      activeStatsTab = "date";
+      render();
+    }
     return;
   }
 

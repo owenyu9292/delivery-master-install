@@ -8,6 +8,7 @@ import { build } from "esbuild";
 import { runSafetyChecks } from "./browser-safety-cases.mjs";
 import { runTimeChecks } from "./browser-time-cases.mjs";
 import { runCorrectionParity } from "./browser-correction-parity.mjs";
+import { runStatisticsChecks } from "./browser-statistics-cases.mjs";
 
 const output = await mkdtemp(join(tmpdir(), "delivery-field-v37-"));
 await cp("public", join(output, "web"), { recursive: true });
@@ -147,7 +148,7 @@ try {
     await send("Emulation.setDeviceMetricsOverride",{width,height:762,deviceScaleFactor:2.63,mobile:true});
     assert.equal(await ev("document.documentElement.scrollWidth>innerWidth"),false,"horizontal overflow "+width);
   };
-  if (!process.env.TIME_ONLY) {
+  if (!process.env.TIME_ONLY && !process.env.STATS_ONLY) {
   await seed(fixture());
   assert.equal(await ev('getComputedStyle(document.documentElement).fontFamily'),"sans-serif");
   assert.equal(await ev('document.querySelectorAll(".tabbar svg").length'),5);
@@ -294,8 +295,11 @@ await seed(newDay());await clock(10,0);
   assert.equal(overlap,false,"large text nav clipped");
   checks.push("150percent text at360 has no horizontal overflow or clipped navigation");
   }
-  await runTimeChecks({ev,send,seed,fixture,read,click,input,tab,until,pause,shot,checks,date,clock});
-  await runCorrectionParity({ev,seed,fixture,read,click,input,tab,until,pause,checks,date});
+  if (!process.env.STATS_ONLY) {
+    await runTimeChecks({ev,send,seed,fixture,read,click,input,tab,until,pause,shot,checks,date,clock});
+    await runCorrectionParity({ev,seed,fixture,read,click,input,tab,until,pause,checks,date});
+  }
+  await runStatisticsChecks({ev,send,seed,fixture,read,click,tab,until,pause,shot,checks,date});
   assert.deepEqual(errors,[]);
   await writeFile(join(output,"result.json"),JSON.stringify({passed:true,checks,errors},null,2));
   console.log(JSON.stringify({passed:true,checks,artifacts:output},null,2));
