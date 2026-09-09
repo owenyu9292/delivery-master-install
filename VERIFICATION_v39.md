@@ -4,7 +4,7 @@
 
 - 소스: delivery-master-install-deploy / codex/hils-handling-minutes.
 - 설치판 APK만 배포. PWA 게시본, main의 보관용 웹 파일, season2 변경/게시 없음.
-- 배포 상태: 사용자 승인 후 커밋·푸시·GitHub 릴리스 진행 중.
+- 배포 상태: 소스 커밋509519c, 작업 브랜치와 v39 태그 푸시, GitHub 릴리스 공개 완료. Release ID385523572.
 - 전달할 GitHub 페이지: https://github.com/owenyu9292/delivery-master-install/releases/tag/v39
 
 ## 동일 설치본
@@ -25,3 +25,9 @@
 - 실제 Fold7의 설치/데이터 보존 및 삼성 숫자 키보드 공백 해소는 확인. 실제 시간 키보드·시스템 Back·파일 선택/내보내기 왕복 전체는 미완료. 브라우저 검수를 전 실기기 통과라고 보고하지 않는다.
 - Android lint 오류0/경고17 기록 유지. 이번 간격 변경은 TS 마크업/CSS 변경이다.
 - 비공개 DB 백업과 기기 캡처는 .device-backup/.device-qa에 보관하고 Git에서 제외한다. 공개 검수 스크린샷은 합성 테스트 자료이다.
+
+## 공개 검증
+
+- 비로그인으로 릴리스 API 및 실제 APK 다운로드 성공. 25,463,087바이트, 위 SHA256과 동일. 다운로드 검사는 메모리에서 수행해 추가 파일을 남기지 않았다.
+- 배포 직전 전체 브라우저 재검수: 업무50묶음 delivery-field-v37-ub4fQD, 저장22묶음 delivery-handling-O6Eq1Y, 키보드 모사16조건 delivery-field-v37-5BvMMj. 모두 통과. 결과는 docs/review-basic-2026-09-09/v39-release-*-result.json에 보관.
+- 사용자 폰은 이미 동일 APK 설치 완료. 공개 릴리스 때문에 재설치할 필요 없음.

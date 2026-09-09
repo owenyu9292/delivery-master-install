@@ -2,7 +2,7 @@
 
 # delivery-master-install
 
-v39 최종 수정본의 폰 USB 설치와 기존 자료 보존을 확인했습니다. GitHub APK 공개 작업 중이며 [VERIFICATION_v39.md](VERIFICATION_v39.md)에 결과를 기록합니다. 상세 검수 범위는 [버튼 간격 검수](VERIFICATION_spacing_2026-09-09.md)와 [기본 검수](VERIFICATION_basics_2026-09-09.md)를 확인합니다. PWA 원본은 변경하지 않습니다.
+현재 공개판은 [Android v39](https://github.com/owenyu9292/delivery-master-install/releases/tag/v39)입니다. 폰에 USB로 설치한 최종본과 공개 APK의 SHA256이 동일하며 기존 자료 보존을 확인했습니다. 이미 최종 v39를 설치했다면 다시 설치할 필요 없습니다. 배포 결과는 [VERIFICATION_v39.md](VERIFICATION_v39.md), 상세 검수는 [버튼 간격](VERIFICATION_spacing_2026-09-09.md)과 [기본 검수](VERIFICATION_basics_2026-09-09.md)를 확인합니다. PWA 원본은 변경하지 않았습니다.
 
 ## Current Folder Role
 
