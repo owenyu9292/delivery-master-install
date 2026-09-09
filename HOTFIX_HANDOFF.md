@@ -3,8 +3,8 @@
 # v37 최신 작업 (2026-09-09)
 
 - 대상: 이 repo의 Android 인스톨판 src/public/android. 브랜치 codex/hils-handling-minutes. PWA main/season2 수정 금지.
-- 로컬 검수/APK 완료, 공개 배포 확인은 VERIFICATION_v37.md의 배포 확인 절을 기준으로 한다.
-- 전달 페이지: https://github.com/owenyu9292/delivery-master-install/releases/tag/v37 (공개 완료 여부는 검수 문서 확인).
+- v37 소스/APK/태그 a059908, 커밋·푸시·GitHub 공개·비로그인 다운로드 해시 확인 완료. 증거는 VERIFICATION_v37.md.
+- 전달 페이지: https://github.com/owenyu9292/delivery-master-install/releases/tag/v37 (직접 APK 링크 대신 이 페이지 전달).
 - 최신 5건: (1) 힐스40분 경과 시 정리30분·배송 시작·업무 화면 자동 전환 (2) 정리완료/배송시작 양방향 및 동일 업무 경계 연동 (3) 수동 우선·자정 날짜·반복 수정 ID/저장 보호 (4) 도우미 전환 원본 보관·시간/상세 원복·총수량 누락 수정, 구형 시간 없는 기록은 효율 미확정 (5) 23개 업무/시간/도우미/통계+22개 저장 브라우저 묶음 및2684조합/도우미11묶음 검수.
 - 자동 정리는 현재 단일 진행 힐스에만 적용하며 닫힌 과거 자료/직접 기록/편집 중에는 덮지 않는다. 실제 수량·배송 완료 시각을 자동 변경하지 않는다. 실제 다른 이동·대기 간격도 유지한다.
 - 아래 v36 이하 내용은 당시 기록이다. Fold7 실기기 이번 APK 설치·복귀·파일 왕복은 미연결로 확인 전이다.

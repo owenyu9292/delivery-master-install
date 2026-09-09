@@ -7,7 +7,7 @@
 - 화면 v37 / APP_VERSION 0.2.36-android-install / Android versionCode10, versionName0.2.36.
 - package: io.github.owenyu9292.deliverymaster.
 - PWA main 보존 기준: 1119e923ad6b8bf53e389b890ff9ba2024132d40.
-- 로컬 코드/브라우저 검수, APK 빌드와 서명·내장 파일 대조 완료. 공개 배포 결과는 아래 배포 확인 절에 별도 기록한다.
+- 로컬 코드/브라우저 검수, APK 빌드와 서명·내장 파일 대조, 커밋·푸시·공개 배포 및 비로그인 다운로드 검증 완료.
 
 ## 연결 규칙
 
@@ -74,4 +74,11 @@
 
 ## 배포 확인
 
-커밋/태그/공개 APK 다운로드 검증 후 기록한다.
+- 소스/APK 커밋 및 v37 태그: a059908056697e5ebad2b3b0b4275ca2dbec3cdb.
+- Release ID: 385330535. 공개 시각: 2026-09-09T08:10:58Z.
+- 공개 페이지: https://github.com/owenyu9292/delivery-master-install/releases/tag/v37
+- 비로그인 페이지 HTTP200, 실제 APK 다운로드 HTTP200.
+- 다운로드 25,644,161바이트, SHA-256 AFF03D9BD9408E2C6F2E8D2B018A2609FCE99FD5A9692CF8E7670A5B636A797E 일치.
+- 원격 main은 1119e923ad6b8bf53e389b890ff9ba2024132d40 유지. PWA 배포 없음.
+- 공개 업로드 최초 요청은 목적지 확인 부족으로 보안 검토에서 차단됐다. 기존 승인된 v36 목적지·커밋·APK 해시를 읽기 전용으로 확인한 뒤 같은 저장소에 재요청하여 승인·공개했다.
+- 실제 폰 설치는 미연결로 하지 않았다. 기존 앱을 삭제하지 말고 업데이트 설치한다.
